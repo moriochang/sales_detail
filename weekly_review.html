@@ -213,6 +213,26 @@
             font-weight: 600;
         }
 
+        /* Traffic 圖表容器 - 與表格等高 */
+        .traffic-overview .chart-container {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 20px;
+            border-radius: 12px;
+            height: 100%;
+            display: flex;
+            align-items: flex-end;
+        }
+
+        .traffic-overview .chart-wrapper {
+            position: relative;
+            height: 420px;
+            width: 100%;
+        }
+
+        .traffic-overview .chart-wrapper canvas {
+            max-height: 420px;
+        }
+
         .overview-table {
             width: 100%;
             border-collapse: collapse;
