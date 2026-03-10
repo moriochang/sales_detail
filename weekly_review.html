@@ -321,12 +321,19 @@
             const sheet = workbook.Sheets[workbook.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
+            console.log('總行數:', rows.length);
+            console.log('第1行 (週次):', rows[0]);
+            
             // 找出回顧週的欄位位置
             const weekHeaders = rows[0];
-            const weekIndex = weekHeaders.findIndex(h => h && h.includes(reviewWeek));
+            const fullWeekName = `26Q2${reviewWeek}`;  // 例如: 26Q2W10
+            const weekIndex = weekHeaders.findIndex(h => h === fullWeekName);
+            
+            console.log('尋找週次:', fullWeekName);
+            console.log('找到的欄位索引:', weekIndex);
             
             if (weekIndex === -1) {
-                throw new Error(`找不到週次 ${reviewWeek}`);
+                throw new Error(`找不到週次 ${reviewWeek} (完整名稱: ${fullWeekName})`);
             }
 
             const result = {};
@@ -335,6 +342,7 @@
             Object.keys(CENTRAL_STORES).forEach(storeId => {
                 const storeNum = parseInt(storeId);
                 result[storeId] = parseStoreData(rows, storeNum, weekIndex);
+                console.log(`門市 ${storeId} 數據:`, result[storeId]);
             });
 
             return result;
@@ -343,24 +351,31 @@
         // 解析單一門市數據
         function parseStoreData(rows, storeNum, weekColIndex) {
             const storeData = {
-                traffic: 0,
                 products: {}
             };
 
-            // 找出該門市的行
+            let isInStoreBlock = false;
+            
+            // 遍歷所有行
             for (let i = 0; i < rows.length; i++) {
                 const row = rows[i];
                 
+                // 找到該門市的起始行
                 if (row[0] === storeNum) {
-                    // Traffic 行
-                    if (row[1] === 'Traffic') {
-                        storeData.traffic = row[weekColIndex] || 0;
-                    }
-                } else if (row[0] === null && i > 0 && rows[i-1][0] === storeNum) {
-                    // 產品行（沒有 store ID 的行，緊接在該門市後面）
+                    isInStoreBlock = true;
+                    continue; // Traffic 行跳過
+                }
+                
+                // 如果遇到下一個門市，停止
+                if (isInStoreBlock && row[0] !== null && typeof row[0] === 'number') {
+                    break;
+                }
+                
+                // 在該門市區塊內，解析產品數據
+                if (isInStoreBlock && row[0] === null && row[1]) {
                     const productClass = row[1];
-                    const qty = row[weekColIndex] || 0;
-                    const amount = row[weekColIndex + 1] || 0;
+                    const qty = row[weekColIndex + 2] || 0;  // 數量在週次欄+2
+                    const amount = row[weekColIndex + 3] || 0;  // 金額在週次欄+3
 
                     if (productClass && (qty > 0 || amount > 0)) {
                         storeData.products[productClass] = {
@@ -419,11 +434,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <div class="section-header">門市人流</div>
-                    <p style="padding: 20px; background: rgba(255,255,255,0.03); border-radius: 8px;">
-                        進店人流：<strong style="color: #4ade80;">${data.traffic.toLocaleString()}</strong> 人
-                    </p>
                 </div>
             `;
         }
