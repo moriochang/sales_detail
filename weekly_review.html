@@ -308,9 +308,9 @@
                 const workbookThisYear = XLSX.read(new Uint8Array(dataThisYear), { type: 'array' });
                 const workbookLastYear = XLSX.read(new Uint8Array(dataLastYear), { type: 'array' });
 
-                // 解析數據
-                const quarterDataThisYear = parseQuarterlyData(workbookThisYear, weekInfo.reviewWeek);
-                const quarterDataLastYear = parseQuarterlyData(workbookLastYear, weekInfo.reviewWeek);
+                // 解析數據 - 今年用 '26'，去年用 '25'
+                const quarterDataThisYear = parseQuarterlyData(workbookThisYear, weekInfo.reviewWeek, '26');
+                const quarterDataLastYear = parseQuarterlyData(workbookLastYear, weekInfo.reviewWeek, '25');
                 
                 // 合併去年數據到今年數據中
                 Object.keys(quarterDataThisYear).forEach(storeId => {
@@ -333,7 +333,7 @@
         }
 
         // 解析季度數據
-        function parseQuarterlyData(workbook, reviewWeek) {
+        function parseQuarterlyData(workbook, reviewWeek, fiscalYear = '26') {
             const sheet = workbook.Sheets[workbook.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
@@ -342,7 +342,7 @@
             
             // 找出回顧週的欄位位置
             const weekHeaders = rows[0];
-            const fullWeekName = `26Q2${reviewWeek}`;  // 例如: 26Q2W10
+            const fullWeekName = `${fiscalYear}Q2${reviewWeek}`;  // 例如: 26Q2W10 或 25Q2W10
             const weekIndex = weekHeaders.findIndex(h => h === fullWeekName);
             
             console.log('尋找週次:', fullWeekName);
