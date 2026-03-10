@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iStore 中區週報回顧</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang TC", "Microsoft JhengHei", sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .week-info {
+            font-size: 18px;
+            color: #4ade80;
+            margin-bottom: 20px;
+        }
+
+        .back-link {
+            display: inline-block;
+            padding: 10px 20px;
+            background: rgba(74, 222, 128, 0.1);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+            border-radius: 8px;
+            color: #4ade80;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .back-link:hover {
+            background: rgba(74, 222, 128, 0.2);
+            border-color: rgba(74, 222, 128, 0.5);
+        }
+
+        .store-section {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            page-break-after: always;
+        }
+
+        .store-title {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #4ade80;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .store-subtitle {
+            font-size: 16px;
+            color: #9ca3af;
+            margin-bottom: 25px;
+        }
+
+        .section-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 30px 0 15px 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(74, 222, 128, 0.3);
+        }
+
+        /* 週銷售回顧表格 */
+        .weekly-review-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+
+        .weekly-review-table th,
+        .weekly-review-table td {
+            padding: 12px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .weekly-review-table th {
+            background: rgba(74, 222, 128, 0.1);
+            font-weight: 600;
+        }
+
+        .weekly-review-table tbody td:nth-child(1) {
+            font-weight: 600;
+            text-align: left;
+            padding-left: 20px;
+        }
+
+        /* 季度總覽 */
+        .quarter-overview {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 20px;
+        }
+
+        .overview-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .overview-table th,
+        .overview-table td {
+            padding: 12px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .overview-table th {
+            background: rgba(59, 130, 246, 0.1);
+            font-weight: 600;
+        }
+
+        .overview-table tbody td:nth-child(1) {
+            font-weight: 600;
+            text-align: left;
+            padding-left: 20px;
+        }
+
+        /* 圖表容器 */
+        .chart-container {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+        }
+
+        /* 顏色標示 */
+        .positive {
+            color: #4ade80;
+        }
+
+        .negative {
+            color: #f87171;
+        }
+
+        .neutral {
+            color: #9ca3af;
+        }
+
+        /* 差異數字 */
+        .diff-value {
+            font-weight: 600;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            color: #9ca3af;
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                background: white;
+                color: black;
+            }
+            
+            .store-section {
+                page-break-after: always;
+                background: white;
+                border: 1px solid #ccc;
+            }
+            
+            .back-link {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>iStore 中區週報回顧</h1>
+            <div class="week-info" id="weekInfo">載入中...</div>
+            <a href="index.html" class="back-link">← 返回銷售分析</a>
+        </header>
+
+        <div id="content">
+            <div class="loading">正在載入季度數據...</div>
+        </div>
+    </div>
+
+    <script>
+        // 中區門市列表
+        const CENTRAL_STORES = {
+            '75': '中港',
+            '76': '中友',
+            '77': '中三井',
+            '81': '耐斯',
+            '84': '垂楊'
+        };
+
+        // 計算當前應該回顧的週次
+        function getCurrentWeekInfo() {
+            const today = new Date();
+            
+            // FY26Q2 的週次定義
+            const weeks = [
+                { week: 'W1', start: '2025-12-28', end: '2026-01-03' },
+                { week: 'W2', start: '2026-01-04', end: '2026-01-10' },
+                { week: 'W3', start: '2026-01-11', end: '2026-01-17' },
+                { week: 'W4', start: '2026-01-18', end: '2026-01-24' },
+                { week: 'W5', start: '2026-01-25', end: '2026-01-31' },
+                { week: 'W6', start: '2026-02-01', end: '2026-02-07' },
+                { week: 'W7', start: '2026-02-08', end: '2026-02-14' },
+                { week: 'W8', start: '2026-02-15', end: '2026-02-21' },
+                { week: 'W9', start: '2026-02-22', end: '2026-02-28' },
+                { week: 'W10', start: '2026-03-01', end: '2026-03-07' },
+                { week: 'W11', start: '2026-03-08', end: '2026-03-14' },
+            ];
+
+            // 找出當前在哪一週
+            const todayStr = today.toISOString().split('T')[0];
+            let currentWeek = null;
+            
+            for (let i = 0; i < weeks.length; i++) {
+                if (todayStr >= weeks[i].start && todayStr <= weeks[i].end) {
+                    currentWeek = weeks[i];
+                    break;
+                }
+            }
+
+            // 如果找不到，默認為最後一週
+            if (!currentWeek) {
+                currentWeek = weeks[weeks.length - 1];
+            }
+
+            // 回顧上一週
+            const currentWeekNum = parseInt(currentWeek.week.substring(1));
+            const reviewWeekNum = currentWeekNum - 1;
+            const reviewWeek = weeks.find(w => w.week === `W${reviewWeekNum}`);
+
+            return {
+                currentWeek: currentWeek.week,
+                reviewWeek: reviewWeek ? reviewWeek.week : 'W1',
+                reviewDateRange: reviewWeek ? `${reviewWeek.start.substring(5)} ~ ${reviewWeek.end.substring(5)}` : '',
+                quarter: 'FY26Q2'
+            };
+        }
+
+        // 載入季度數據
+        async function loadQuarterlyData() {
+            const weekInfo = getCurrentWeekInfo();
+            
+            // 更新頁面標題
+            document.getElementById('weekInfo').innerHTML = `
+                本週：${weekInfo.quarter}${weekInfo.currentWeek}<br>
+                <span style="color: #fb923c;">回顧週：${weekInfo.quarter}${weekInfo.reviewWeek} (${weekInfo.reviewDateRange})</span>
+            `;
+
+            try {
+                // 載入對應季度的 Excel 檔案
+                const response = await fetch(`data/quarterly/${weekInfo.quarter}.xlsx`);
+                const arrayBuffer = await response.arrayBuffer();
+                const data = new Uint8Array(arrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array' });
+
+                // 解析數據
+                const quarterData = parseQuarterlyData(workbook, weekInfo.reviewWeek);
+                
+                // 顯示報告
+                displayWeeklyReport(quarterData, weekInfo);
+            } catch (error) {
+                console.error('載入季度數據失敗:', error);
+                document.getElementById('content').innerHTML = `
+                    <div class="loading" style="color: #f87171;">
+                        載入失敗：${error.message}<br>
+                        請確認 data/quarterly/${weekInfo.quarter}.xlsx 檔案存在
+                    </div>
+                `;
+            }
+        }
+
+        // 解析季度數據
+        function parseQuarterlyData(workbook, reviewWeek) {
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+            // 找出回顧週的欄位位置
+            const weekHeaders = rows[0];
+            const weekIndex = weekHeaders.findIndex(h => h && h.includes(reviewWeek));
+            
+            if (weekIndex === -1) {
+                throw new Error(`找不到週次 ${reviewWeek}`);
+            }
+
+            const result = {};
+
+            // 解析每個門市的數據
+            Object.keys(CENTRAL_STORES).forEach(storeId => {
+                const storeNum = parseInt(storeId);
+                result[storeId] = parseStoreData(rows, storeNum, weekIndex);
+            });
+
+            return result;
+        }
+
+        // 解析單一門市數據
+        function parseStoreData(rows, storeNum, weekColIndex) {
+            const storeData = {
+                traffic: 0,
+                products: {}
+            };
+
+            // 找出該門市的行
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                
+                if (row[0] === storeNum) {
+                    // Traffic 行
+                    if (row[1] === 'Traffic') {
+                        storeData.traffic = row[weekColIndex] || 0;
+                    }
+                } else if (row[0] === null && i > 0 && rows[i-1][0] === storeNum) {
+                    // 產品行（沒有 store ID 的行，緊接在該門市後面）
+                    const productClass = row[1];
+                    const qty = row[weekColIndex] || 0;
+                    const amount = row[weekColIndex + 1] || 0;
+
+                    if (productClass && (qty > 0 || amount > 0)) {
+                        storeData.products[productClass] = {
+                            qty: qty,
+                            amount: amount
+                        };
+                    }
+                }
+            }
+
+            return storeData;
+        }
+
+        // 顯示週報
+        function displayWeeklyReport(quarterData, weekInfo) {
+            const content = document.getElementById('content');
+            let html = '';
+
+            // 為每個門市生成報告
+            Object.entries(CENTRAL_STORES).forEach(([storeId, storeName]) => {
+                const data = quarterData[storeId];
+                html += generateStoreReport(storeId, storeName, data, weekInfo);
+            });
+
+            content.innerHTML = html;
+
+            // 繪製圖表
+            Object.keys(CENTRAL_STORES).forEach(storeId => {
+                drawCharts(storeId, quarterData[storeId]);
+            });
+        }
+
+        // 生成單一門市報告
+        function generateStoreReport(storeId, storeName, data, weekInfo) {
+            const mainProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch'];
+            
+            return `
+                <div class="store-section">
+                    <div class="store-title">
+                        <span>門市業績 > 四大主機銷售 > ${storeName}</span>
+                        <span style="margin-left: auto; font-size: 18px; color: #9ca3af;">中區</span>
+                    </div>
+                    <div class="store-subtitle">門市 ${storeId}</div>
+
+                    <div class="section-header">${weekInfo.quarter}${weekInfo.reviewWeek} 週銷售回顧</div>
+                    ${generateWeeklyReviewTable(data)}
+
+                    <div class="quarter-overview">
+                        <div>
+                            <div class="section-header">${weekInfo.quarter.substring(0, 6)} 季度總覽</div>
+                            ${generateQuarterOverviewTable(data)}
+                        </div>
+                        <div>
+                            <div class="chart-container">
+                                <canvas id="chart-${storeId}"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section-header">門市人流</div>
+                    <p style="padding: 20px; background: rgba(255,255,255,0.03); border-radius: 8px;">
+                        進店人流：<strong style="color: #4ade80;">${data.traffic.toLocaleString()}</strong> 人
+                    </p>
+                </div>
+            `;
+        }
+
+        // 生成週銷售回顧表格
+        function generateWeeklyReviewTable(data) {
+            const mainProducts = ['CPU', 'iPad'];  // 只顯示有目標的產品
+            
+            return `
+                <table class="weekly-review-table">
+                    <thead>
+                        <tr>
+                            <th>產品</th>
+                            <th>上週目標</th>
+                            <th>實際達成</th>
+                            <th>差異</th>
+                            <th>上週銷售狀況</th>
+                            <th>改善方案<br>(達成就不用填寫)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${mainProducts.map(product => {
+                            const productData = data.products[product] || { qty: 0 };
+                            return `
+                                <tr>
+                                    <td>${product}</td>
+                                    <td>-</td>
+                                    <td>${Math.round(productData.qty)}</td>
+                                    <td>-</td>
+                                    <td style="text-align: left;">-</td>
+                                    <td style="text-align: left;">-</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        // 生成季度總覽表格
+        function generateQuarterOverviewTable(data) {
+            const mainProducts = ['CPU', 'iPad', 'iPhone', 'AW'];
+            
+            return `
+                <table class="overview-table">
+                    <thead>
+                        <tr>
+                            <th>產品</th>
+                            <th>本季目標</th>
+                            <th>本季累積</th>
+                            <th>達成率</th>
+                            <th>去年同期累積</th>
+                            <th>YoY</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${mainProducts.map(product => {
+                            const productKey = product === 'AW' ? 'Apple Watch' : product;
+                            const productData = data.products[productKey] || { qty: 0 };
+                            
+                            return `
+                                <tr>
+                                    <td>${product}</td>
+                                    <td>-</td>
+                                    <td>${Math.round(productData.qty)}</td>
+                                    <td>-</td>
+                                    <td>-</td>
+                                    <td class="neutral">-</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        // 繪製圖表
+        function drawCharts(storeId, data) {
+            const ctx = document.getElementById(`chart-${storeId}`);
+            if (!ctx) return;
+
+            const mainProducts = ['CPU', 'iPad', 'iPhone', 'AW'];
+            const productData = mainProducts.map(p => {
+                const key = p === 'AW' ? 'Apple Watch' : p;
+                return data.products[key] ? data.products[key].qty : 0;
+            });
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: mainProducts,
+                    datasets: [{
+                        label: '本季累積',
+                        data: productData,
+                        backgroundColor: 'rgba(74, 222, 128, 0.6)',
+                        borderColor: 'rgba(74, 222, 128, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#e0e0e0'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: '#e0e0e0'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 頁面載入時執行
+        window.addEventListener('DOMContentLoaded', loadQuarterlyData);
+    </script>
+</body>
+</html>
