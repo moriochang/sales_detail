@@ -182,6 +182,37 @@
             align-items: start;
         }
 
+        /* Traffic 轉換率分析 */
+        .traffic-overview {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 20px;
+            align-items: start;
+        }
+
+        .traffic-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .traffic-table th,
+        .traffic-table td {
+            padding: 10px 12px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 14px;
+        }
+
+        .traffic-table th {
+            background: rgba(59, 130, 246, 0.1);
+            font-weight: 600;
+        }
+
+        .traffic-table tbody td:nth-child(1) {
+            font-weight: 600;
+        }
+
         .overview-table {
             width: 100%;
             border-collapse: collapse;
@@ -423,7 +454,10 @@
         // 解析單一門市數據
         function parseStoreData(rows, storeNum, weekColIndex) {
             const storeData = {
-                products: {}
+                products: {},
+                traffic: null,
+                weeklyTraffic: [],
+                weeklyConversion: []
             };
 
             let isInStoreBlock = false;
@@ -436,6 +470,23 @@
                 // 找到該門市的起始行
                 if (row[0] === storeNum) {
                     isInStoreBlock = true;
+                    
+                    // 檢查是否為 Traffic 行
+                    if (row[1] === 'Traffic') {
+                        // 收集 W1~W10 的 Traffic 數據
+                        const weeklyTraffic = [];
+                        for (let week = 0; week < 10; week++) {
+                            const weekStartCol = week * 8;
+                            const trafficCol = weekStartCol + 2;
+                            const traffic = row[trafficCol] || 0;
+                            weeklyTraffic.push(traffic);
+                        }
+                        storeData.weeklyTraffic = weeklyTraffic;
+                        storeData.traffic = {
+                            weekTraffic: row[weekColIndex + 2] || 0,
+                            totalTraffic: weeklyTraffic.reduce((sum, val) => sum + val, 0)
+                        };
+                    }
                     continue;
                 }
                 
@@ -452,36 +503,37 @@
                     const weekQty = row[weekColIndex + 2] || 0;
                     const weekAmount = row[weekColIndex + 3] || 0;
                     
-                    // 只保留四大主機的數據
-                    const mainProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch'];
-                    
-                    if (!mainProducts.includes(productClass)) {
-                        continue; // 跳過非主機產品
-                    }
+                    // 五大主機 + AirPods（用於計算轉換率）
+                    const allProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch', 'AirPods'];
                     
                     // 計算 W1~W10 的累積（每週間隔 8 欄）
                     let totalQty = 0;
                     let totalAmount = 0;
+                    const weeklyQty = [];
+                    
                     for (let week = 0; week < 10; week++) {
-                        const weekStartCol = week * 8;  // W1=0, W2=8, W3=16...
-                        const qtyCol = weekStartCol + 2;  // 數量在 +2
-                        const amtCol = weekStartCol + 3;  // 金額在 +3
+                        const weekStartCol = week * 8;
+                        const qtyCol = weekStartCol + 2;
+                        const amtCol = weekStartCol + 3;
                         
-                        if (qtyCol < row.length && typeof row[qtyCol] === 'number') {
-                            totalQty += row[qtyCol];
-                        }
-                        if (amtCol < row.length && typeof row[amtCol] === 'number') {
-                            totalAmount += row[amtCol];
-                        }
+                        const qty = (qtyCol < row.length && typeof row[qtyCol] === 'number') ? row[qtyCol] : 0;
+                        const amt = (amtCol < row.length && typeof row[amtCol] === 'number') ? row[amtCol] : 0;
+                        
+                        totalQty += qty;
+                        totalAmount += amt;
+                        weeklyQty.push(qty);
                     }
 
-                    storeData.products[productClass] = {
-                        weekQty: weekQty,
-                        weekAmount: weekAmount,
-                        totalQty: totalQty,
-                        totalAmount: totalAmount
-                    };
-                    productCount++;
+                    if (allProducts.includes(productClass)) {
+                        storeData.products[productClass] = {
+                            weekQty: weekQty,
+                            weekAmount: weekAmount,
+                            totalQty: totalQty,
+                            totalAmount: totalAmount,
+                            weeklyQty: weeklyQty
+                        };
+                        productCount++;
+                    }
                 }
             }
 
@@ -531,6 +583,7 @@
             // 需要等待 DOM 更新後再繪製
             setTimeout(() => {
                 drawCharts(storeId, data);
+                drawTrafficChart(storeId, data);
             }, 100);
         }
 
@@ -562,7 +615,92 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="section-header" style="margin-top: 40px;">門市 ${storeId} - 成交轉換率</div>
+                    <div class="traffic-overview">
+                        <div>
+                            ${generateTrafficTable(data, data.lastYearData)}
+                        </div>
+                        <div>
+                            <div class="chart-container">
+                                <div class="chart-wrapper">
+                                    <canvas id="traffic-chart-${storeId}"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+            `;
+        }
+
+        // 生成 Traffic 轉換率表格
+        function generateTrafficTable(data, lastYearData) {
+            const fiveProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch', 'AirPods'];
+            
+            // 計算每週的成交台數和轉換率
+            const weeklyData = [];
+            for (let week = 0; week < 10; week++) {
+                let salesCount = 0;
+                fiveProducts.forEach(product => {
+                    if (data.products[product] && data.products[product].weeklyQty) {
+                        salesCount += data.products[product].weeklyQty[week] || 0;
+                    }
+                });
+                
+                const traffic = data.weeklyTraffic[week] || 0;
+                const conversionRate = traffic > 0 ? (salesCount / traffic * 100) : 0;
+                
+                weeklyData.push({
+                    week: week + 1,
+                    traffic: traffic,
+                    sales: salesCount,
+                    conversion: conversionRate
+                });
+            }
+            
+            // 計算去年同期的人流
+            const lastYearTraffic = lastYearData && lastYearData.traffic ? lastYearData.traffic.totalTraffic : 0;
+            const thisYearTraffic = data.traffic ? data.traffic.totalTraffic : 0;
+            const trafficYoY = lastYearTraffic > 0 ? ((thisYearTraffic - lastYearTraffic) / lastYearTraffic * 100) : 0;
+            
+            // 計算總計
+            const totalTraffic = weeklyData.reduce((sum, w) => sum + w.traffic, 0);
+            const totalSales = weeklyData.reduce((sum, w) => sum + w.sales, 0);
+            const totalConversion = totalTraffic > 0 ? (totalSales / totalTraffic * 100) : 0;
+            
+            return `
+                <table class="traffic-table">
+                    <thead>
+                        <tr>
+                            <th>週次</th>
+                            <th>進店人流</th>
+                            <th>成交台數</th>
+                            <th>成交轉換率</th>
+                            <th>去年同週人流</th>
+                            <th>YoY</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${weeklyData.map(w => `
+                            <tr>
+                                <td><strong>W${w.week}</strong></td>
+                                <td>${w.traffic.toLocaleString()}</td>
+                                <td>${w.sales}</td>
+                                <td><strong style="color: #60a5fa;">${w.conversion.toFixed(1)}%</strong></td>
+                                <td>-</td>
+                                <td class="neutral">-</td>
+                            </tr>
+                        `).join('')}
+                        <tr style="background: rgba(59, 130, 246, 0.1); font-weight: 600;">
+                            <td>總計</td>
+                            <td>${totalTraffic.toLocaleString()}</td>
+                            <td>${totalSales}</td>
+                            <td><strong style="color: #4ade80;">${totalConversion.toFixed(1)}%</strong></td>
+                            <td>${lastYearTraffic.toLocaleString()}</td>
+                            <td><span class="${trafficYoY >= 0 ? 'positive' : 'negative'}">${trafficYoY > 0 ? '+' : ''}${trafficYoY.toFixed(1)}%</span></td>
+                        </tr>
+                    </tbody>
+                </table>
             `;
         }
 
@@ -719,6 +857,120 @@
                                     size: 13,
                                     weight: '500'
                                 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 繪製 Traffic 轉換率圖表
+        function drawTrafficChart(storeId, data) {
+            const ctx = document.getElementById(`traffic-chart-${storeId}`);
+            if (!ctx) return;
+
+            const fiveProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch', 'AirPods'];
+            
+            // 計算每週數據
+            const weekLabels = [];
+            const trafficData = [];
+            const conversionData = [];
+            
+            for (let week = 0; week < 10; week++) {
+                weekLabels.push(`W${week + 1}`);
+                
+                // 計算成交台數
+                let salesCount = 0;
+                fiveProducts.forEach(product => {
+                    if (data.products[product] && data.products[product].weeklyQty) {
+                        salesCount += data.products[product].weeklyQty[week] || 0;
+                    }
+                });
+                
+                const traffic = data.weeklyTraffic[week] || 0;
+                const conversion = traffic > 0 ? (salesCount / traffic * 100) : 0;
+                
+                trafficData.push(traffic);
+                conversionData.push(conversion);
+            }
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: weekLabels,
+                    datasets: [
+                        {
+                            label: '成交轉換率',
+                            data: conversionData,
+                            type: 'line',
+                            borderColor: 'rgba(96, 165, 250, 1)',
+                            backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointBackgroundColor: 'rgba(96, 165, 250, 1)',
+                            yAxisID: 'y1',
+                            tension: 0.3
+                        },
+                        {
+                            label: '進店人流',
+                            data: trafficData,
+                            backgroundColor: 'rgba(134, 239, 172, 0.6)',
+                            borderColor: 'rgba(134, 239, 172, 1)',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: {
+                                color: '#e0e0e0',
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#e0e0e0'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            beginAtZero: true,
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: '#60a5fa',
+                                callback: function(value) {
+                                    return value.toFixed(1) + '%';
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: '#e0e0e0'
                             }
                         }
                     }
