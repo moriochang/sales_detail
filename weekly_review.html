@@ -336,17 +336,11 @@
         function parseQuarterlyData(workbook, reviewWeek, fiscalYear = '26') {
             const sheet = workbook.Sheets[workbook.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-            console.log('總行數:', rows.length);
-            console.log('第1行 (週次):', rows[0]);
             
             // 找出回顧週的欄位位置
             const weekHeaders = rows[0];
             const fullWeekName = `${fiscalYear}Q2${reviewWeek}`;  // 例如: 26Q2W10 或 25Q2W10
             const weekIndex = weekHeaders.findIndex(h => h === fullWeekName);
-            
-            console.log('尋找週次:', fullWeekName);
-            console.log('找到的欄位索引:', weekIndex);
             
             if (weekIndex === -1) {
                 throw new Error(`找不到週次 ${reviewWeek} (完整名稱: ${fullWeekName})`);
@@ -358,7 +352,6 @@
             Object.keys(CENTRAL_STORES).forEach(storeId => {
                 const storeNum = parseInt(storeId);
                 result[storeId] = parseStoreData(rows, storeNum, weekIndex);
-                console.log(`門市 ${storeId} 數據:`, result[storeId]);
             });
 
             return result;
@@ -380,25 +373,28 @@
                 // 找到該門市的起始行
                 if (row[0] === storeNum) {
                     isInStoreBlock = true;
-                    console.log(`找到門市 ${storeNum} 在第 ${i} 行`);
                     continue;
                 }
                 
                 // 如果遇到下一個門市，停止
                 if (isInStoreBlock && row[0] !== null && typeof row[0] === 'number' && row[0] !== storeNum) {
-                    console.log(`門市 ${storeNum} 區塊結束於第 ${i} 行 (遇到門市 ${row[0]})`);
                     break;
                 }
                 
                 // 在該門市區塊內，解析產品數據
-                if (isInStoreBlock && row[0] === null && row[1]) {
+                if (isInStoreBlock && !row[0] && row[1]) {
                     const productClass = row[1];
-                    
-                    console.log(`  第 ${i} 行: 檢查條件 - isInStoreBlock=${isInStoreBlock}, row[0]=${row[0]}, row[1]=${row[1]}`);
                     
                     // W10 的數量在 weekColIndex + 2
                     const weekQty = row[weekColIndex + 2] || 0;
                     const weekAmount = row[weekColIndex + 3] || 0;
+                    
+                    // 只保留四大主機的數據
+                    const mainProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch'];
+                    
+                    if (!mainProducts.includes(productClass)) {
+                        continue; // 跳過非主機產品
+                    }
                     
                     // 計算 W1~W10 的累積（每週間隔 8 欄）
                     let totalQty = 0;
@@ -416,28 +412,16 @@
                         }
                     }
 
-                    console.log(`    ${productClass} - W10=${weekQty}, 累積=${totalQty}`);
-
-                    // 只要 productClass 存在就添加
-                    if (productClass) {
-                        storeData.products[productClass] = {
-                            weekQty: weekQty,
-                            weekAmount: weekAmount,
-                            totalQty: totalQty,
-                            totalAmount: totalAmount
-                        };
-                        productCount++;
-                        console.log(`    ✓ 已添加產品: ${productClass}`);
-                    } else {
-                        console.log(`    ✗ productClass 為空`);
-                    }
-                } else if (isInStoreBlock) {
-                    // 在區塊內但不符合條件
-                    console.log(`  第 ${i} 行: 不符合條件 - row[0]=${row[0]}, row[1]=${row[1]}`);
+                    storeData.products[productClass] = {
+                        weekQty: weekQty,
+                        weekAmount: weekAmount,
+                        totalQty: totalQty,
+                        totalAmount: totalAmount
+                    };
+                    productCount++;
                 }
             }
 
-            console.log(`門市 ${storeNum} 解析完成，產品數量: ${productCount}, products keys:`, Object.keys(storeData.products));
             return storeData;
         }
 
