@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>iStore 中區週報回顧</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -355,6 +355,7 @@
             };
 
             let isInStoreBlock = false;
+            let storeStartRow = -1;
             
             // 遍歷所有行
             for (let i = 0; i < rows.length; i++) {
@@ -363,11 +364,14 @@
                 // 找到該門市的起始行
                 if (row[0] === storeNum) {
                     isInStoreBlock = true;
+                    storeStartRow = i;
+                    console.log(`找到門市 ${storeNum} 在第 ${i} 行`);
                     continue; // Traffic 行跳過
                 }
                 
                 // 如果遇到下一個門市，停止
-                if (isInStoreBlock && row[0] !== null && typeof row[0] === 'number') {
+                if (isInStoreBlock && row[0] !== null && typeof row[0] === 'number' && row[0] !== storeNum) {
+                    console.log(`門市 ${storeNum} 區塊結束於第 ${i} 行`);
                     break;
                 }
                 
@@ -376,6 +380,8 @@
                     const productClass = row[1];
                     const qty = row[weekColIndex + 2] || 0;  // 數量在週次欄+2
                     const amount = row[weekColIndex + 3] || 0;  // 金額在週次欄+3
+
+                    console.log(`  第 ${i} 行: ${productClass} - qty=${qty}, amount=${amount}`);
 
                     if (productClass && (qty > 0 || amount > 0)) {
                         storeData.products[productClass] = {
@@ -386,6 +392,7 @@
                 }
             }
 
+            console.log(`門市 ${storeNum} 解析完成，產品數量: ${Object.keys(storeData.products).length}`);
             return storeData;
         }
 
