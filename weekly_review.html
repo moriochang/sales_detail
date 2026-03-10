@@ -36,6 +36,56 @@
             text-align: center;
         }
 
+        /* 門市選擇器 */
+        .store-selector {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            padding: 20px 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .store-selector-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #4ade80;
+        }
+
+        .store-buttons {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .store-btn {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: #e0e0e0;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+
+        .store-btn:hover {
+            background: rgba(74, 222, 128, 0.1);
+            border-color: rgba(74, 222, 128, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .store-btn.active {
+            background: linear-gradient(135deg, rgba(74, 222, 128, 0.2) 0%, rgba(34, 197, 94, 0.2) 100%);
+            border-color: rgba(74, 222, 128, 0.8);
+            color: #4ade80;
+            box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);
+        }
+
         h1 {
             font-size: 32px;
             font-weight: 600;
@@ -225,6 +275,13 @@
             <div class="week-info" id="weekInfo">載入中...</div>
             <a href="index.html" class="back-link">← 返回銷售分析</a>
         </header>
+
+        <div class="store-selector">
+            <div class="store-selector-title">🏪 選擇門市</div>
+            <div class="store-buttons" id="storeButtons">
+                <!-- 按鈕將由 JavaScript 動態生成 -->
+            </div>
+        </div>
 
         <div id="content">
             <div class="loading">正在載入季度數據...</div>
@@ -433,21 +490,48 @@
 
         // 顯示週報
         function displayWeeklyReport(quarterData, weekInfo) {
-            const content = document.getElementById('content');
-            let html = '';
-
-            // 為每個門市生成報告
+            // 先生成門市選擇按鈕
+            const buttonsContainer = document.getElementById('storeButtons');
+            buttonsContainer.innerHTML = '';
+            
             Object.entries(CENTRAL_STORES).forEach(([storeId, storeName]) => {
-                const data = quarterData[storeId];
-                html += generateStoreReport(storeId, storeName, data, weekInfo);
+                const btn = document.createElement('button');
+                btn.className = 'store-btn';
+                btn.textContent = `${storeId} ${storeName}`;
+                btn.dataset.storeId = storeId;
+                
+                btn.addEventListener('click', () => {
+                    // 移除所有按鈕的 active 狀態
+                    document.querySelectorAll('.store-btn').forEach(b => b.classList.remove('active'));
+                    // 添加當前按鈕的 active 狀態
+                    btn.classList.add('active');
+                    // 顯示該門市的數據
+                    displayStoreData(storeId, quarterData[storeId], weekInfo);
+                });
+                
+                buttonsContainer.appendChild(btn);
             });
-
-            content.innerHTML = html;
-
+            
+            // 清空內容區域，等待用戶選擇
+            document.getElementById('content').innerHTML = `
+                <div class="loading" style="text-align: center; padding: 60px; color: #9ca3af;">
+                    👆 請選擇門市查看週報數據
+                </div>
+            `;
+        }
+        
+        // 顯示單一門市數據
+        function displayStoreData(storeId, data, weekInfo) {
+            const storeName = CENTRAL_STORES[storeId];
+            const content = document.getElementById('content');
+            
+            content.innerHTML = generateStoreReport(storeId, storeName, data, weekInfo);
+            
             // 繪製圖表
-            Object.keys(CENTRAL_STORES).forEach(storeId => {
-                drawCharts(storeId, quarterData[storeId]);
-            });
+            // 需要等待 DOM 更新後再繪製
+            setTimeout(() => {
+                drawCharts(storeId, data);
+            }, 100);
         }
 
         // 生成單一門市報告
