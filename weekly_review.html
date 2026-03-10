@@ -371,6 +371,7 @@
             };
 
             let isInStoreBlock = false;
+            let productCount = 0;
             
             // 遍歷所有行
             for (let i = 0; i < rows.length; i++) {
@@ -385,7 +386,7 @@
                 
                 // 如果遇到下一個門市，停止
                 if (isInStoreBlock && row[0] !== null && typeof row[0] === 'number' && row[0] !== storeNum) {
-                    console.log(`門市 ${storeNum} 區塊結束於第 ${i} 行`);
+                    console.log(`門市 ${storeNum} 區塊結束於第 ${i} 行 (遇到門市 ${row[0]})`);
                     break;
                 }
                 
@@ -393,7 +394,7 @@
                 if (isInStoreBlock && row[0] === null && row[1]) {
                     const productClass = row[1];
                     
-                    // W10 的數量在 weekColIndex + 2 (因為結構是: store, class, qty, amount, ...)
+                    // W10 的數量在 weekColIndex + 2
                     const weekQty = row[weekColIndex + 2] || 0;
                     const weekAmount = row[weekColIndex + 3] || 0;
                     
@@ -413,20 +414,23 @@
                         }
                     }
 
-                    console.log(`  ${productClass}: W10=${weekQty}, 累積=${totalQty}`);
+                    console.log(`  第 ${i} 行: ${productClass} - W10=${weekQty}, 累積=${totalQty}`);
 
+                    // 只要 productClass 存在就添加
                     if (productClass) {
                         storeData.products[productClass] = {
-                            weekQty: weekQty,        // W10 單週數量
-                            weekAmount: weekAmount,  // W10 單週金額
-                            totalQty: totalQty,      // W1~W10 累積數量
-                            totalAmount: totalAmount // W1~W10 累積金額
+                            weekQty: weekQty,
+                            weekAmount: weekAmount,
+                            totalQty: totalQty,
+                            totalAmount: totalAmount
                         };
+                        productCount++;
+                        console.log(`    ✓ 已添加產品: ${productClass}`);
                     }
                 }
             }
 
-            console.log(`門市 ${storeNum} 解析完成，產品數量: ${Object.keys(storeData.products).length}`);
+            console.log(`門市 ${storeNum} 解析完成，產品數量: ${productCount}, products keys:`, Object.keys(storeData.products));
             return storeData;
         }
 
