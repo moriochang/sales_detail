@@ -394,6 +394,8 @@
                 if (isInStoreBlock && row[0] === null && row[1]) {
                     const productClass = row[1];
                     
+                    console.log(`  第 ${i} 行: 檢查條件 - isInStoreBlock=${isInStoreBlock}, row[0]=${row[0]}, row[1]=${row[1]}`);
+                    
                     // W10 的數量在 weekColIndex + 2
                     const weekQty = row[weekColIndex + 2] || 0;
                     const weekAmount = row[weekColIndex + 3] || 0;
@@ -414,7 +416,7 @@
                         }
                     }
 
-                    console.log(`  第 ${i} 行: ${productClass} - W10=${weekQty}, 累積=${totalQty}`);
+                    console.log(`    ${productClass} - W10=${weekQty}, 累積=${totalQty}`);
 
                     // 只要 productClass 存在就添加
                     if (productClass) {
@@ -426,7 +428,12 @@
                         };
                         productCount++;
                         console.log(`    ✓ 已添加產品: ${productClass}`);
+                    } else {
+                        console.log(`    ✗ productClass 為空`);
                     }
+                } else if (isInStoreBlock) {
+                    // 在區塊內但不符合條件
+                    console.log(`  第 ${i} 行: 不符合條件 - row[0]=${row[0]}, row[1]=${row[1]}`);
                 }
             }
 
