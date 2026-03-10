@@ -129,6 +129,7 @@
             grid-template-columns: 1fr 1fr;
             gap: 30px;
             margin-top: 20px;
+            align-items: start;
         }
 
         .overview-table {
@@ -159,16 +160,17 @@
             background: rgba(255, 255, 255, 0.03);
             padding: 20px;
             border-radius: 12px;
-            margin-top: 20px;
             height: 100%;
-            display: flex;
-            flex-direction: column;
+            min-height: 300px;
         }
 
         .chart-wrapper {
             position: relative;
-            height: 280px;
-            flex: 1;
+            height: 260px;
+        }
+
+        .chart-wrapper canvas {
+            max-height: 260px;
         }
 
         /* 顏色標示 */
