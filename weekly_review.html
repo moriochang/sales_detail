@@ -294,23 +294,39 @@
             `;
 
             try {
-                // 載入對應季度的 Excel 檔案
-                const response = await fetch(`data/quarterly/${weekInfo.quarter}.xlsx`);
-                const arrayBuffer = await response.arrayBuffer();
-                const data = new Uint8Array(arrayBuffer);
-                const workbook = XLSX.read(data, { type: 'array' });
+                // 載入今年和去年的 Excel 檔案
+                const [responseThisYear, responseLastYear] = await Promise.all([
+                    fetch(`data/quarterly/${weekInfo.quarter}.xlsx`),
+                    fetch(`data/quarterly/FY25Q2.xlsx`)
+                ]);
+                
+                const [dataThisYear, dataLastYear] = await Promise.all([
+                    responseThisYear.arrayBuffer(),
+                    responseLastYear.arrayBuffer()
+                ]);
+
+                const workbookThisYear = XLSX.read(new Uint8Array(dataThisYear), { type: 'array' });
+                const workbookLastYear = XLSX.read(new Uint8Array(dataLastYear), { type: 'array' });
 
                 // 解析數據
-                const quarterData = parseQuarterlyData(workbook, weekInfo.reviewWeek);
+                const quarterDataThisYear = parseQuarterlyData(workbookThisYear, weekInfo.reviewWeek);
+                const quarterDataLastYear = parseQuarterlyData(workbookLastYear, weekInfo.reviewWeek);
+                
+                // 合併去年數據到今年數據中
+                Object.keys(quarterDataThisYear).forEach(storeId => {
+                    quarterDataThisYear[storeId].lastYearProducts = quarterDataLastYear[storeId].products;
+                });
                 
                 // 顯示報告
-                displayWeeklyReport(quarterData, weekInfo);
+                displayWeeklyReport(quarterDataThisYear, weekInfo);
             } catch (error) {
                 console.error('載入季度數據失敗:', error);
                 document.getElementById('content').innerHTML = `
                     <div class="loading" style="color: #f87171;">
                         載入失敗：${error.message}<br>
-                        請確認 data/quarterly/${weekInfo.quarter}.xlsx 檔案存在
+                        請確認檔案存在：<br>
+                        - data/quarterly/${weekInfo.quarter}.xlsx<br>
+                        - data/quarterly/FY25Q2.xlsx
                     </div>
                 `;
             }
@@ -355,7 +371,6 @@
             };
 
             let isInStoreBlock = false;
-            let storeStartRow = -1;
             
             // 遍歷所有行
             for (let i = 0; i < rows.length; i++) {
@@ -364,9 +379,8 @@
                 // 找到該門市的起始行
                 if (row[0] === storeNum) {
                     isInStoreBlock = true;
-                    storeStartRow = i;
                     console.log(`找到門市 ${storeNum} 在第 ${i} 行`);
-                    continue; // Traffic 行跳過
+                    continue;
                 }
                 
                 // 如果遇到下一個門市，停止
@@ -378,15 +392,35 @@
                 // 在該門市區塊內，解析產品數據
                 if (isInStoreBlock && row[0] === null && row[1]) {
                     const productClass = row[1];
-                    const qty = row[weekColIndex + 2] || 0;  // 數量在週次欄+2
-                    const amount = row[weekColIndex + 3] || 0;  // 金額在週次欄+3
+                    
+                    // W10 的數量在 weekColIndex + 2 (因為結構是: store, class, qty, amount, ...)
+                    const weekQty = row[weekColIndex + 2] || 0;
+                    const weekAmount = row[weekColIndex + 3] || 0;
+                    
+                    // 計算 W1~W10 的累積（每週間隔 8 欄）
+                    let totalQty = 0;
+                    let totalAmount = 0;
+                    for (let week = 0; week < 10; week++) {
+                        const weekStartCol = week * 8;  // W1=0, W2=8, W3=16...
+                        const qtyCol = weekStartCol + 2;  // 數量在 +2
+                        const amtCol = weekStartCol + 3;  // 金額在 +3
+                        
+                        if (qtyCol < row.length && typeof row[qtyCol] === 'number') {
+                            totalQty += row[qtyCol];
+                        }
+                        if (amtCol < row.length && typeof row[amtCol] === 'number') {
+                            totalAmount += row[amtCol];
+                        }
+                    }
 
-                    console.log(`  第 ${i} 行: ${productClass} - qty=${qty}, amount=${amount}`);
+                    console.log(`  ${productClass}: W10=${weekQty}, 累積=${totalQty}`);
 
-                    if (productClass && (qty > 0 || amount > 0)) {
+                    if (productClass) {
                         storeData.products[productClass] = {
-                            qty: qty,
-                            amount: amount
+                            weekQty: weekQty,        // W10 單週數量
+                            weekAmount: weekAmount,  // W10 單週金額
+                            totalQty: totalQty,      // W1~W10 累積數量
+                            totalAmount: totalAmount // W1~W10 累積金額
                         };
                     }
                 }
@@ -447,7 +481,7 @@
 
         // 生成週銷售回顧表格
         function generateWeeklyReviewTable(data) {
-            const mainProducts = ['CPU', 'iPad'];  // 只顯示有目標的產品
+            const mainProducts = ['CPU', 'iPad'];
             
             return `
                 <table class="weekly-review-table">
@@ -463,12 +497,12 @@
                     </thead>
                     <tbody>
                         ${mainProducts.map(product => {
-                            const productData = data.products[product] || { qty: 0 };
+                            const productData = data.products[product] || { weekQty: 0 };
                             return `
                                 <tr>
                                     <td>${product}</td>
                                     <td>-</td>
-                                    <td>${Math.round(productData.qty)}</td>
+                                    <td><strong>${Math.round(productData.weekQty)}</strong></td>
                                     <td>-</td>
                                     <td style="text-align: left;">-</td>
                                     <td style="text-align: left;">-</td>
@@ -499,16 +533,23 @@
                     <tbody>
                         ${mainProducts.map(product => {
                             const productKey = product === 'AW' ? 'Apple Watch' : product;
-                            const productData = data.products[productKey] || { qty: 0 };
+                            const productData = data.products[productKey] || { totalQty: 0 };
+                            const lastYearData = data.lastYearProducts ? (data.lastYearProducts[productKey] || { totalQty: 0 }) : { totalQty: 0 };
+                            
+                            const thisYearTotal = Math.round(productData.totalQty);
+                            const lastYearTotal = Math.round(lastYearData.totalQty);
+                            const yoy = lastYearTotal > 0 ? ((thisYearTotal - lastYearTotal) / lastYearTotal * 100) : 0;
+                            const yoyClass = yoy > 0 ? 'positive' : yoy < 0 ? 'negative' : 'neutral';
+                            const yoySign = yoy > 0 ? '+' : '';
                             
                             return `
                                 <tr>
                                     <td>${product}</td>
                                     <td>-</td>
-                                    <td>${Math.round(productData.qty)}</td>
+                                    <td><strong>${thisYearTotal.toLocaleString()}</strong></td>
                                     <td>-</td>
-                                    <td>-</td>
-                                    <td class="neutral">-</td>
+                                    <td>${lastYearTotal.toLocaleString()}</td>
+                                    <td><span class="${yoyClass}">${yoySign}${yoy.toFixed(1)}%</span></td>
                                 </tr>
                             `;
                         }).join('')}
@@ -523,29 +564,46 @@
             if (!ctx) return;
 
             const mainProducts = ['CPU', 'iPad', 'iPhone', 'AW'];
-            const productData = mainProducts.map(p => {
+            const thisYearData = mainProducts.map(p => {
                 const key = p === 'AW' ? 'Apple Watch' : p;
-                return data.products[key] ? data.products[key].qty : 0;
+                return data.products[key] ? data.products[key].totalQty : 0;
+            });
+            
+            const lastYearData = mainProducts.map(p => {
+                const key = p === 'AW' ? 'Apple Watch' : p;
+                return data.lastYearProducts && data.lastYearProducts[key] ? data.lastYearProducts[key].totalQty : 0;
             });
 
             new Chart(ctx, {
                 type: 'bar',
                 data: {
                     labels: mainProducts,
-                    datasets: [{
-                        label: '本季累積',
-                        data: productData,
-                        backgroundColor: 'rgba(74, 222, 128, 0.6)',
-                        borderColor: 'rgba(74, 222, 128, 1)',
-                        borderWidth: 1
-                    }]
+                    datasets: [
+                        {
+                            label: '去年同期累積',
+                            data: lastYearData,
+                            backgroundColor: 'rgba(251, 146, 60, 0.6)',
+                            borderColor: 'rgba(251, 146, 60, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '本季累積',
+                            data: thisYearData,
+                            backgroundColor: 'rgba(74, 222, 128, 0.6)',
+                            borderColor: 'rgba(74, 222, 128, 1)',
+                            borderWidth: 1
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            display: false
+                            display: true,
+                            labels: {
+                                color: '#e0e0e0'
+                            }
                         }
                     },
                     scales: {
