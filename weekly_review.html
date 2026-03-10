@@ -182,6 +182,26 @@
             align-items: start;
         }
 
+        /* 季度總覽圖表容器 - 與表格等高 */
+        .quarter-overview .chart-container {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 20px;
+            border-radius: 12px;
+            height: 100%;
+            display: flex;
+            align-items: flex-end;
+        }
+
+        .quarter-overview .chart-wrapper {
+            position: relative;
+            height: 220px;
+            width: 100%;
+        }
+
+        .quarter-overview .chart-wrapper canvas {
+            max-height: 220px;
+        }
+
         /* Traffic 轉換率分析 */
         .traffic-overview {
             display: grid;
@@ -254,24 +274,6 @@
             font-weight: 600;
             text-align: left;
             padding-left: 20px;
-        }
-
-        /* 圖表容器 */
-        .chart-container {
-            background: rgba(255, 255, 255, 0.03);
-            padding: 20px;
-            border-radius: 12px;
-            height: 100%;
-            min-height: 300px;
-        }
-
-        .chart-wrapper {
-            position: relative;
-            height: 260px;
-        }
-
-        .chart-wrapper canvas {
-            max-height: 260px;
         }
 
         /* 顏色標示 */
