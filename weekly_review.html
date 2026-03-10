@@ -409,6 +409,7 @@
                 // 合併去年數據到今年數據中
                 Object.keys(quarterDataThisYear).forEach(storeId => {
                     quarterDataThisYear[storeId].lastYearProducts = quarterDataLastYear[storeId].products;
+                    quarterDataThisYear[storeId].lastYearData = quarterDataLastYear[storeId];  // 完整的去年數據（包含 Traffic）
                 });
                 
                 // 顯示報告
@@ -591,6 +592,9 @@
         function generateStoreReport(storeId, storeName, data, weekInfo) {
             const mainProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch'];
             
+            // 從 data 中取出去年數據（已經在 loadQuarterlyData 中合併）
+            const lastYearData = data.lastYearData || null;
+            
             return `
                 <div class="store-section">
                     <div class="store-title">
@@ -619,7 +623,7 @@
                     <div class="section-header" style="margin-top: 40px;">門市 ${storeId} - 成交轉換率</div>
                     <div class="traffic-overview">
                         <div>
-                            ${generateTrafficTable(data, data.lastYearData)}
+                            ${generateTrafficTable(data, lastYearData)}
                         </div>
                         <div>
                             <div class="chart-container">
@@ -650,18 +654,24 @@
                 const traffic = data.weeklyTraffic[week] || 0;
                 const conversionRate = traffic > 0 ? (salesCount / traffic * 100) : 0;
                 
+                // 去年同週人流
+                const lastYearTraffic = lastYearData && lastYearData.weeklyTraffic ? (lastYearData.weeklyTraffic[week] || 0) : 0;
+                const trafficYoY = lastYearTraffic > 0 ? ((traffic - lastYearTraffic) / lastYearTraffic * 100) : 0;
+                
                 weeklyData.push({
                     week: week + 1,
                     traffic: traffic,
                     sales: salesCount,
-                    conversion: conversionRate
+                    conversion: conversionRate,
+                    lastYearTraffic: lastYearTraffic,
+                    yoy: trafficYoY
                 });
             }
             
             // 計算去年同期的人流
-            const lastYearTraffic = lastYearData && lastYearData.traffic ? lastYearData.traffic.totalTraffic : 0;
-            const thisYearTraffic = data.traffic ? data.traffic.totalTraffic : 0;
-            const trafficYoY = lastYearTraffic > 0 ? ((thisYearTraffic - lastYearTraffic) / lastYearTraffic * 100) : 0;
+            const lastYearTotalTraffic = lastYearData && lastYearData.traffic ? lastYearData.traffic.totalTraffic : 0;
+            const thisYearTotalTraffic = data.traffic ? data.traffic.totalTraffic : 0;
+            const totalTrafficYoY = lastYearTotalTraffic > 0 ? ((thisYearTotalTraffic - lastYearTotalTraffic) / lastYearTotalTraffic * 100) : 0;
             
             // 計算總計
             const totalTraffic = weeklyData.reduce((sum, w) => sum + w.traffic, 0);
@@ -681,23 +691,27 @@
                         </tr>
                     </thead>
                     <tbody>
-                        ${weeklyData.map(w => `
-                            <tr>
-                                <td><strong>W${w.week}</strong></td>
-                                <td>${w.traffic.toLocaleString()}</td>
-                                <td>${w.sales}</td>
-                                <td><strong style="color: #60a5fa;">${w.conversion.toFixed(1)}%</strong></td>
-                                <td>-</td>
-                                <td class="neutral">-</td>
-                            </tr>
-                        `).join('')}
+                        ${weeklyData.map(w => {
+                            const yoyClass = w.yoy > 0 ? 'positive' : w.yoy < 0 ? 'negative' : 'neutral';
+                            const yoySign = w.yoy > 0 ? '+' : '';
+                            return `
+                                <tr>
+                                    <td><strong>W${w.week}</strong></td>
+                                    <td>${w.traffic.toLocaleString()}</td>
+                                    <td>${w.sales}</td>
+                                    <td><strong style="color: #60a5fa;">${w.conversion.toFixed(1)}%</strong></td>
+                                    <td>${w.lastYearTraffic.toLocaleString()}</td>
+                                    <td><span class="${yoyClass}">${yoySign}${w.yoy.toFixed(1)}%</span></td>
+                                </tr>
+                            `;
+                        }).join('')}
                         <tr style="background: rgba(59, 130, 246, 0.1); font-weight: 600;">
                             <td>總計</td>
                             <td>${totalTraffic.toLocaleString()}</td>
                             <td>${totalSales}</td>
                             <td><strong style="color: #4ade80;">${totalConversion.toFixed(1)}%</strong></td>
-                            <td>${lastYearTraffic.toLocaleString()}</td>
-                            <td><span class="${trafficYoY >= 0 ? 'positive' : 'negative'}">${trafficYoY > 0 ? '+' : ''}${trafficYoY.toFixed(1)}%</span></td>
+                            <td>${lastYearTotalTraffic.toLocaleString()}</td>
+                            <td><span class="${totalTrafficYoY >= 0 ? 'positive' : 'negative'}">${totalTrafficYoY > 0 ? '+' : ''}${totalTrafficYoY.toFixed(1)}%</span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -924,6 +938,12 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            left: 10,
+                            right: 10
+                        }
+                    },
                     plugins: {
                         legend: {
                             display: true,
