@@ -160,11 +160,15 @@
             padding: 20px;
             border-radius: 12px;
             margin-top: 20px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
         }
 
         .chart-wrapper {
             position: relative;
-            height: 300px;
+            height: 280px;
+            flex: 1;
         }
 
         /* 顏色標示 */
@@ -466,7 +470,9 @@
                         </div>
                         <div>
                             <div class="chart-container">
-                                <canvas id="chart-${storeId}"></canvas>
+                                <div class="chart-wrapper">
+                                    <canvas id="chart-${storeId}"></canvas>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -577,32 +583,38 @@
                         {
                             label: '去年同期累積',
                             data: lastYearData,
-                            backgroundColor: 'rgba(251, 146, 60, 0.6)',
-                            borderColor: 'rgba(251, 146, 60, 1)',
+                            backgroundColor: 'rgba(100, 116, 139, 0.8)',
+                            borderColor: 'rgba(100, 116, 139, 1)',
                             borderWidth: 1
                         },
                         {
                             label: '本季累積',
                             data: thisYearData,
-                            backgroundColor: 'rgba(74, 222, 128, 0.6)',
-                            borderColor: 'rgba(74, 222, 128, 1)',
+                            backgroundColor: 'rgba(134, 239, 172, 0.8)',
+                            borderColor: 'rgba(134, 239, 172, 1)',
                             borderWidth: 1
                         }
                     ]
                 },
                 options: {
+                    indexAxis: 'y',  // 橫向顯示
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
                             display: true,
+                            position: 'bottom',
                             labels: {
-                                color: '#e0e0e0'
+                                color: '#e0e0e0',
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
                             }
                         }
                     },
                     scales: {
-                        y: {
+                        x: {
                             beginAtZero: true,
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
@@ -611,12 +623,16 @@
                                 color: '#e0e0e0'
                             }
                         },
-                        x: {
+                        y: {
                             grid: {
                                 display: false
                             },
                             ticks: {
-                                color: '#e0e0e0'
+                                color: '#e0e0e0',
+                                font: {
+                                    size: 13,
+                                    weight: '500'
+                                }
                             }
                         }
                     }
