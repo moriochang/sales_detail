@@ -6,6 +6,7 @@
     <title>iStore 中區週報回顧</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -891,6 +892,19 @@
                                     size: 12
                                 }
                             }
+                        },
+                        datalabels: {
+                            display: true,
+                            color: '#ffffff',
+                            font: {
+                                weight: 'bold',
+                                size: 11
+                            },
+                            anchor: 'end',
+                            align: 'end',
+                            formatter: function(value) {
+                                return value > 0 ? value : '';
+                            }
                         }
                     },
                     scales: {
@@ -916,7 +930,8 @@
                             }
                         }
                     }
-                }
+                },
+                plugins: [ChartDataLabels]
             });
         }
 
@@ -965,7 +980,10 @@
                             pointRadius: 4,
                             pointBackgroundColor: 'rgba(96, 165, 250, 1)',
                             yAxisID: 'y1',
-                            tension: 0.3
+                            tension: 0.3,
+                            datalabels: {
+                                display: false  // 折線圖不顯示數值
+                            }
                         },
                         {
                             label: '進店人流',
@@ -973,7 +991,20 @@
                             backgroundColor: 'rgba(134, 239, 172, 0.6)',
                             borderColor: 'rgba(134, 239, 172, 1)',
                             borderWidth: 1,
-                            yAxisID: 'y'
+                            yAxisID: 'y',
+                            datalabels: {
+                                display: true,
+                                color: '#ffffff',
+                                font: {
+                                    weight: 'bold',
+                                    size: 10
+                                },
+                                anchor: 'end',
+                                align: 'top',
+                                formatter: function(value) {
+                                    return value > 0 ? value.toLocaleString() : '';
+                                }
+                            }
                         }
                     ]
                 },
@@ -983,7 +1014,8 @@
                     layout: {
                         padding: {
                             left: 10,
-                            right: 10
+                            right: 10,
+                            top: 20
                         }
                     },
                     plugins: {
@@ -1036,7 +1068,8 @@
                             }
                         }
                     }
-                }
+                },
+                plugins: [ChartDataLabels]
             });
         }
 
