@@ -431,28 +431,33 @@
             `;
 
             try {
-                // 載入今年和去年的 Excel 檔案
-                const [responseThisYear, responseLastYear] = await Promise.all([
+                // 載入今年、去年和目標檔案
+                const [responseThisYear, responseLastYear, responseTargets] = await Promise.all([
                     fetch(`data/quarterly/${weekInfo.quarter}.xlsx`),
-                    fetch(`data/quarterly/FY25Q2.xlsx`)
+                    fetch(`data/quarterly/FY25Q2.xlsx`),
+                    fetch(`data/quarterly/${weekInfo.quarter}_targets.xlsx`)
                 ]);
                 
-                const [dataThisYear, dataLastYear] = await Promise.all([
+                const [dataThisYear, dataLastYear, dataTargets] = await Promise.all([
                     responseThisYear.arrayBuffer(),
-                    responseLastYear.arrayBuffer()
+                    responseLastYear.arrayBuffer(),
+                    responseTargets.arrayBuffer()
                 ]);
 
                 const workbookThisYear = XLSX.read(new Uint8Array(dataThisYear), { type: 'array' });
                 const workbookLastYear = XLSX.read(new Uint8Array(dataLastYear), { type: 'array' });
+                const workbookTargets = XLSX.read(new Uint8Array(dataTargets), { type: 'array' });
 
                 // 解析數據 - 今年用 '26'，去年用 '25'
                 const quarterDataThisYear = parseQuarterlyData(workbookThisYear, weekInfo.reviewWeek, '26');
                 const quarterDataLastYear = parseQuarterlyData(workbookLastYear, weekInfo.reviewWeek, '25');
+                const targetsData = parseTargetsData(workbookTargets);
                 
-                // 合併去年數據到今年數據中
+                // 合併去年數據和目標數據到今年數據中
                 Object.keys(quarterDataThisYear).forEach(storeId => {
                     quarterDataThisYear[storeId].lastYearProducts = quarterDataLastYear[storeId].products;
                     quarterDataThisYear[storeId].lastYearData = quarterDataLastYear[storeId];  // 完整的去年數據（包含 Traffic）
+                    quarterDataThisYear[storeId].targets = targetsData[storeId] || {};  // 本季目標
                 });
                 
                 // 顯示報告
@@ -464,7 +469,8 @@
                         載入失敗：${error.message}<br>
                         請確認檔案存在：<br>
                         - data/quarterly/${weekInfo.quarter}.xlsx<br>
-                        - data/quarterly/FY25Q2.xlsx
+                        - data/quarterly/FY25Q2.xlsx<br>
+                        - data/quarterly/${weekInfo.quarter}_targets.xlsx
                     </div>
                 `;
             }
@@ -493,6 +499,56 @@
             });
 
             return result;
+        }
+
+        // 解析目標數據
+        function parseTargetsData(workbook) {
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+            const targetsData = {};
+            let currentStore = null;
+
+            // 從第 5 行開始解析（跳過標題行）
+            for (let i = 4; i < rows.length; i++) {
+                const row = rows[i];
+
+                // 門市起始行
+                if (row[0] && typeof row[0] === 'number') {
+                    currentStore = row[0].toString();
+                    if (!targetsData[currentStore]) {
+                        targetsData[currentStore] = {};
+                    }
+
+                    const product = row[1];
+                    const quarterlyTarget = row[2];
+
+                    if (product && quarterlyTarget) {
+                        targetsData[currentStore][product] = {
+                            quarterly: quarterlyTarget,
+                            weekly: row[3] || null  // 上週目標（目前為空）
+                        };
+                    }
+                }
+                // 產品行（store 欄位為空）
+                else if (!row[0] && row[1] && currentStore) {
+                    const product = row[1];
+                    const quarterlyTarget = row[2];
+
+                    if (product && quarterlyTarget) {
+                        targetsData[currentStore][product] = {
+                            quarterly: quarterlyTarget,
+                            weekly: row[3] || null
+                        };
+                    }
+                }
+                // 遇到「合計」行，重置當前門市
+                else if (row[0] && typeof row[0] === 'string' && row[0].includes('合計')) {
+                    currentStore = null;
+                }
+            }
+
+            return targetsData;
         }
 
         // 解析單一門市數據
@@ -817,9 +873,17 @@
                             const productKey = product === 'AW' ? 'Apple Watch' : product;
                             const productData = data.products[productKey] || { totalQty: 0 };
                             const lastYearData = data.lastYearProducts ? (data.lastYearProducts[productKey] || { totalQty: 0 }) : { totalQty: 0 };
+                            const targetData = data.targets ? data.targets[productKey] : null;
                             
                             const thisYearTotal = Math.round(productData.totalQty);
                             const lastYearTotal = Math.round(lastYearData.totalQty);
+                            const quarterlyTarget = targetData ? targetData.quarterly : null;
+                            
+                            // 計算達成率
+                            const achievementRate = quarterlyTarget && quarterlyTarget > 0 ? (thisYearTotal / quarterlyTarget * 100) : null;
+                            const achievementClass = achievementRate ? (achievementRate >= 100 ? 'positive' : achievementRate >= 80 ? 'neutral' : 'negative') : 'neutral';
+                            
+                            // 計算 YoY
                             const yoy = lastYearTotal > 0 ? ((thisYearTotal - lastYearTotal) / lastYearTotal * 100) : 0;
                             const yoyClass = yoy > 0 ? 'positive' : yoy < 0 ? 'negative' : 'neutral';
                             const yoySign = yoy > 0 ? '+' : '';
@@ -827,9 +891,9 @@
                             return `
                                 <tr>
                                     <td>${product}</td>
-                                    <td>-</td>
+                                    <td>${quarterlyTarget ? quarterlyTarget.toLocaleString() : '-'}</td>
                                     <td><strong>${thisYearTotal.toLocaleString()}</strong></td>
-                                    <td>-</td>
+                                    <td>${achievementRate !== null ? `<span class="${achievementClass}">${achievementRate.toFixed(1)}%</span>` : '-'}</td>
                                     <td>${lastYearTotal.toLocaleString()}</td>
                                     <td><span class="${yoyClass}">${yoySign}${yoy.toFixed(1)}%</span></td>
                                 </tr>
