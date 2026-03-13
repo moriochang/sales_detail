@@ -132,7 +132,26 @@
             color: #4ade80;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 15px;
+        }
+
+        .csv-export-btn {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.2) 100%);
+            border: 2px solid rgba(59, 130, 246, 0.5);
+            border-radius: 8px;
+            color: #60a5fa;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .csv-export-btn:hover {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(37, 99, 235, 0.3) 100%);
+            border-color: rgba(59, 130, 246, 0.8);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
 
         .store-subtitle {
@@ -640,8 +659,16 @@
             return storeData;
         }
 
+        // 全域變數儲存當前數據
+        let currentQuarterData = {};
+        let currentWeekInfo = {};
+
         // 顯示週報
         function displayWeeklyReport(quarterData, weekInfo) {
+            // 儲存到全域變數供 CSV 匯出使用
+            currentQuarterData = quarterData;
+            currentWeekInfo = weekInfo;
+            
             // 先生成門市選擇按鈕
             const buttonsContainer = document.getElementById('storeButtons');
             buttonsContainer.innerHTML = '';
@@ -671,6 +698,100 @@
                 </div>
             `;
         }
+
+        // CSV 匯出功能
+        function exportToCSV(storeId, weekLabel) {
+            const data = currentQuarterData[storeId];
+            if (!data) {
+                alert('數據載入中，請稍後再試');
+                return;
+            }
+
+            const fiveProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch', 'AirPods'];
+            const csvRows = [];
+
+            // UTF-8 BOM
+            csvRows.push('\uFEFF');
+
+            // 標題
+            csvRows.push(`門市 ${storeId} - ${weekLabel} 週報數據`);
+            csvRows.push('');
+
+            // === 季度總覽 ===
+            csvRows.push('=== 季度總覽 ===');
+            csvRows.push('產品,本季目標,本季累積,達成率,去年同期累積,YoY');
+            
+            fiveProducts.forEach(product => {
+                const productKey = product === 'AW' ? 'Apple Watch' : product;
+                const productData = data.products[productKey] || { totalQty: 0 };
+                const lastYearData = data.lastYearProducts ? (data.lastYearProducts[productKey] || { totalQty: 0 }) : { totalQty: 0 };
+                const targetData = data.targets ? data.targets[productKey] : null;
+                
+                const thisYearTotal = Math.round(productData.totalQty);
+                const lastYearTotal = Math.round(lastYearData.totalQty);
+                const quarterlyTarget = targetData ? targetData.quarterly : '';
+                const achievementRate = quarterlyTarget && quarterlyTarget > 0 ? (thisYearTotal / quarterlyTarget * 100).toFixed(1) + '%' : '';
+                const yoy = lastYearTotal > 0 ? ((thisYearTotal - lastYearTotal) / lastYearTotal * 100).toFixed(1) + '%' : '0.0%';
+                
+                csvRows.push(`${product},${quarterlyTarget},${thisYearTotal},${achievementRate},${lastYearTotal},${yoy}`);
+            });
+
+            csvRows.push('');
+
+            // === Traffic 轉換率 ===
+            csvRows.push('=== 成交轉換率 ===');
+            csvRows.push('週次,進店人流,成交台數,成交轉換率,去年同週人流,YoY');
+
+            for (let week = 0; week < 10; week++) {
+                let salesCount = 0;
+                fiveProducts.forEach(p => {
+                    const key = p === 'AW' ? 'Apple Watch' : p;
+                    if (data.products[key] && data.products[key].weeklyQty) {
+                        salesCount += data.products[key].weeklyQty[week] || 0;
+                    }
+                });
+
+                const traffic = data.weeklyTraffic[week] || 0;
+                const conversion = traffic > 0 ? (salesCount / traffic * 100).toFixed(1) + '%' : '0.0%';
+                const lastYearTraffic = data.lastYearData && data.lastYearData.weeklyTraffic ? (data.lastYearData.weeklyTraffic[week] || 0) : 0;
+                const trafficYoY = lastYearTraffic > 0 ? ((traffic - lastYearTraffic) / lastYearTraffic * 100).toFixed(1) + '%' : '0.0%';
+
+                csvRows.push(`W${week + 1},${traffic},${salesCount},${conversion},${lastYearTraffic},${trafficYoY}`);
+            }
+
+            // 總計
+            const totalTraffic = data.weeklyTraffic.reduce((sum, val) => sum + val, 0);
+            let totalSales = 0;
+            for (let week = 0; week < 10; week++) {
+                fiveProducts.forEach(p => {
+                    const key = p === 'AW' ? 'Apple Watch' : p;
+                    if (data.products[key] && data.products[key].weeklyQty) {
+                        totalSales += data.products[key].weeklyQty[week] || 0;
+                    }
+                });
+            }
+            const totalConversion = totalTraffic > 0 ? (totalSales / totalTraffic * 100).toFixed(1) + '%' : '0.0%';
+            const lastYearTotalTraffic = data.lastYearData && data.lastYearData.traffic ? data.lastYearData.traffic.totalTraffic : 0;
+            const totalTrafficYoY = lastYearTotalTraffic > 0 ? ((totalTraffic - lastYearTotalTraffic) / lastYearTotalTraffic * 100).toFixed(1) + '%' : '0.0%';
+
+            csvRows.push(`總計,${totalTraffic},${totalSales},${totalConversion},${lastYearTotalTraffic},${totalTrafficYoY}`);
+
+            // 生成 CSV 內容
+            const csvContent = csvRows.join('\n');
+
+            // 建立下載
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', `${storeId}_${weekLabel}_數據.csv`);
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
         
         // 顯示單一門市數據
         function displayStoreData(storeId, data, weekInfo) {
@@ -698,6 +819,9 @@
                 <div class="store-section">
                     <div class="store-title">
                         <span>門市業績 > 四大主機銷售 > ${storeName}</span>
+                        <button class="csv-export-btn" onclick="exportToCSV('${storeId}', '${weekInfo.quarter}${weekInfo.reviewWeek}')">
+                            📊 匯出 CSV
+                        </button>
                         <span style="margin-left: auto; font-size: 18px; color: #9ca3af;">中區</span>
                     </div>
                     <div class="store-subtitle">門市 ${storeId}</div>
