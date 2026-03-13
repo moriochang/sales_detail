@@ -717,11 +717,26 @@
             csvRows.push(`門市 ${storeId} - ${weekLabel} 週報數據`);
             csvRows.push('');
 
+            // === 週銷售回顧 ===
+            csvRows.push(`=== ${weekLabel} 週銷售回顧 ===`);
+            csvRows.push('產品,上週目標,實際達成,差異,上週銷售狀況,改善方案');
+            
+            const weeklyProducts = ['CPU', 'iPad'];
+            weeklyProducts.forEach(product => {
+                const productData = data.products[product] || { weekQty: 0 };
+                const actualAchievement = Math.round(productData.weekQty);
+                
+                csvRows.push(`${product},-,${actualAchievement},-,-,-`);
+            });
+
+            csvRows.push('');
+
             // === 季度總覽 ===
             csvRows.push('=== 季度總覽 ===');
             csvRows.push('產品,本季目標,本季累積,達成率,去年同期累積,YoY');
             
-            fiveProducts.forEach(product => {
+            const quarterlyProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch'];
+            quarterlyProducts.forEach(product => {
                 const productKey = product === 'AW' ? 'Apple Watch' : product;
                 const productData = data.products[productKey] || { totalQty: 0 };
                 const lastYearData = data.lastYearProducts ? (data.lastYearProducts[productKey] || { totalQty: 0 }) : { totalQty: 0 };
