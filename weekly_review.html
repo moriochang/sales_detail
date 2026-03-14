@@ -660,7 +660,7 @@
 
             try {
                 // 載入今年、去年、目標檔案和 Care 檔案
-                const [responseThisYear, responseLastYear, responseTargets, careDat] = await Promise.all([
+                const [responseThisYear, responseLastYear, responseTargets, careData] = await Promise.all([
                     fetch(`data/quarterly/${weekInfo.quarter}.xlsx`),
                     fetch(`data/quarterly/FY25Q2.xlsx`),
                     fetch(`data/quarterly/${weekInfo.quarter}_targets.xlsx`),
