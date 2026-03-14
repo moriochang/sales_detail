@@ -273,6 +273,45 @@
             font-weight: 600;
         }
 
+        /* Care 產品搭售率分析表格 */
+        .care-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .care-table th,
+        .care-table td {
+            padding: 10px 12px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 14px;
+        }
+
+        .care-table th {
+            background: rgba(59, 130, 246, 0.1);
+            font-weight: 600;
+        }
+
+        .care-table tbody td:first-child {
+            text-align: left;
+            padding-left: 20px;
+            font-weight: 600;
+        }
+
+        /* Care 區塊樣式 */
+        .care-section {
+            margin-top: 30px;
+        }
+
+        .care-section-header {
+            color: #4ade80;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #4ade80;
+        }
+
         /* Traffic 圖表容器 - 與表格等高 */
         .traffic-overview .chart-container {
             background: rgba(255, 255, 255, 0.03);
@@ -391,6 +430,176 @@
             '84': '垂楊'
         };
 
+        // ========== Care 產品搭售率分析函數 ==========
+
+        // 載入 Care 檔案
+        async function loadCareFiles() {
+            try {
+                // 直接載入已知的兩個檔案
+                const files = ['20250301-20250308.xls', '20260301-20260308.xls'];
+                
+                const careDataPromises = files.map(async filename => {
+                    const response = await fetch(`data/care/${filename}`);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+                    return {
+                        filename: filename,
+                        date: filename.replace('.xls', ''),
+                        data: parseCareData(workbook)
+                    };
+                });
+                
+                const careFiles = await Promise.all(careDataPromises);
+                
+                // 根據日期排序（舊的在前）
+                careFiles.sort((a, b) => a.date.localeCompare(b.date));
+                
+                return {
+                    lastYear: careFiles[0],
+                    thisYear: careFiles[1]
+                };
+            } catch (error) {
+                console.error('載入 Care 檔案失敗:', error);
+                return null;
+            }
+        }
+
+        // 解析 Care 數據
+        function parseCareData(workbook) {
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+            
+            const storeData = {};
+            
+            // 從第2行開始（跳過標題）
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                const storeId = row[0]?.toString();
+                const subDepart = row[4];  // SUB_DEPART_DESCRIPTION
+                const classDesc = row[5];   // CLASS_DESCRIPTION
+                const qty = row[12] || 0;   // total_qty
+                
+                if (!storeId) continue;
+                
+                if (!storeData[storeId]) {
+                    storeData[storeId] = {
+                        CPU: { st: 0, care: 0 },
+                        iPad: { st: 0, care: 0 },
+                        iPhone: { st: 0, care: 0 },
+                        'Apple Watch': { st: 0, care: 0 },
+                        AirPods: { st: 0, care: 0 }
+                    };
+                }
+                
+                // 判斷產品類別
+                let category = null;
+                if (subDepart === '1010 PC NOTEBOOK') category = 'CPU';
+                else if (subDepart === '1011 平板電腦') category = 'iPad';
+                else if (subDepart === '1012 手機') category = 'iPhone';
+                else if (subDepart === '1013 穿戴裝置' || (classDesc && classDesc.includes('Watch'))) category = 'Apple Watch';
+                else if (classDesc && classDesc.includes('AirPods')) category = 'AirPods';
+                
+                if (!category) continue;
+                
+                // 判斷是否為 Care
+                if (classDesc && (classDesc.includes('Care') || classDesc.includes('ACPP') || classDesc.includes('iCPP'))) {
+                    storeData[storeId][category].care += qty;
+                } else {
+                    storeData[storeId][category].st += qty;
+                }
+            }
+            
+            return storeData;
+        }
+
+        // 生成 Care 表格
+        function generateCareTable(storeId, careData) {
+            if (!careData || !careData.lastYear || !careData.thisYear) {
+                return '<div style="color: #9ca3af; padding: 20px; text-align: center;">Care 數據載入失敗</div>';
+            }
+            
+            const categories = ['CPU', 'iPad', 'iPhone', 'Apple Watch', 'AirPods'];
+            
+            const lastYearData = careData.lastYear.data[storeId] || {};
+            const thisYearData = careData.thisYear.data[storeId] || {};
+            
+            let totalLastYearST = 0, totalLastYearCare = 0;
+            let totalThisYearST = 0, totalThisYearCare = 0;
+            
+            const rows = categories.map(cat => {
+                const lastYear = lastYearData[cat] || { st: 0, care: 0 };
+                const thisYear = thisYearData[cat] || { st: 0, care: 0 };
+                
+                const lastYearRate = lastYear.st > 0 ? (lastYear.care / lastYear.st * 100) : 0;
+                const thisYearRate = thisYear.st > 0 ? (thisYear.care / thisYear.st * 100) : 0;
+                const yoyRate = thisYearRate - lastYearRate;
+                
+                totalLastYearST += lastYear.st;
+                totalLastYearCare += lastYear.care;
+                totalThisYearST += thisYear.st;
+                totalThisYearCare += thisYear.care;
+                
+                const yoyClass = yoyRate > 0 ? 'positive' : yoyRate < 0 ? 'negative' : 'neutral';
+                const yoySign = yoyRate > 0 ? '+' : '';
+                
+                return `
+                    <tr>
+                        <td>${cat === 'Apple Watch' ? 'AW' : cat}</td>
+                        <td>${lastYear.st}</td>
+                        <td>${lastYear.care}</td>
+                        <td><span style="color: #fb923c;">${lastYearRate.toFixed(2)}%</span></td>
+                        <td>${thisYear.st}</td>
+                        <td>${thisYear.care}</td>
+                        <td><span style="color: #4ade80;">${thisYearRate.toFixed(2)}%</span></td>
+                        <td><span class="${yoyClass}">${yoySign}${yoyRate.toFixed(2)}%</span></td>
+                    </tr>
+                `;
+            }).join('');
+            
+            const totalLastYearRate = totalLastYearST > 0 ? (totalLastYearCare / totalLastYearST * 100) : 0;
+            const totalThisYearRate = totalThisYearST > 0 ? (totalThisYearCare / totalThisYearST * 100) : 0;
+            const totalYoY = totalThisYearRate - totalLastYearRate;
+            const totalYoYClass = totalYoY > 0 ? 'positive' : totalYoY < 0 ? 'negative' : 'neutral';
+            const totalYoYSign = totalYoY > 0 ? '+' : '';
+            
+            return `
+                <div style="margin-bottom: 10px; color: #9ca3af; font-size: 14px;">
+                    ※ 搭售率 = (ACPP+ + iCPP) / 主機銷售數量 × 100%
+                </div>
+                <table class="care-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2">產品類別</th>
+                            <th colspan="3">去年 (${careData.lastYear.date})</th>
+                            <th colspan="3">今年 (${careData.thisYear.date})</th>
+                            <th rowspan="2">YoY</th>
+                        </tr>
+                        <tr>
+                            <th>ST</th>
+                            <th>AC+ 套數</th>
+                            <th>搭售率</th>
+                            <th>ST</th>
+                            <th>AC+ 套數</th>
+                            <th>搭售率</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                        <tr style="background: rgba(59, 130, 246, 0.1); font-weight: 600;">
+                            <td>總計</td>
+                            <td>${totalLastYearST}</td>
+                            <td>${totalLastYearCare}</td>
+                            <td><span style="color: #fb923c;">${totalLastYearRate.toFixed(2)}%</span></td>
+                            <td>${totalThisYearST}</td>
+                            <td>${totalThisYearCare}</td>
+                            <td><span style="color: #4ade80;">${totalThisYearRate.toFixed(2)}%</span></td>
+                            <td><span class="${totalYoYClass}">${totalYoYSign}${totalYoY.toFixed(2)}%</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+        }
+
         // 計算當前應該回顧的週次
         function getCurrentWeekInfo() {
             const today = new Date();
@@ -450,11 +659,12 @@
             `;
 
             try {
-                // 載入今年、去年和目標檔案
-                const [responseThisYear, responseLastYear, responseTargets] = await Promise.all([
+                // 載入今年、去年、目標檔案和 Care 檔案
+                const [responseThisYear, responseLastYear, responseTargets, careDat] = await Promise.all([
                     fetch(`data/quarterly/${weekInfo.quarter}.xlsx`),
                     fetch(`data/quarterly/FY25Q2.xlsx`),
-                    fetch(`data/quarterly/${weekInfo.quarter}_targets.xlsx`)
+                    fetch(`data/quarterly/${weekInfo.quarter}_targets.xlsx`),
+                    loadCareFiles()
                 ]);
                 
                 const [dataThisYear, dataLastYear, dataTargets] = await Promise.all([
@@ -472,11 +682,12 @@
                 const quarterDataLastYear = parseQuarterlyData(workbookLastYear, weekInfo.reviewWeek, '25');
                 const targetsData = parseTargetsData(workbookTargets);
                 
-                // 合併去年數據和目標數據到今年數據中
+                // 合併去年數據、目標數據和 Care 數據到今年數據中
                 Object.keys(quarterDataThisYear).forEach(storeId => {
                     quarterDataThisYear[storeId].lastYearProducts = quarterDataLastYear[storeId].products;
                     quarterDataThisYear[storeId].lastYearData = quarterDataLastYear[storeId];  // 完整的去年數據（包含 Traffic）
                     quarterDataThisYear[storeId].targets = targetsData[storeId] || {};  // 本季目標
+                    quarterDataThisYear[storeId].careData = careData;  // Care 數據
                 });
                 
                 // 顯示報告
@@ -791,6 +1002,42 @@
 
             csvRows.push(`總計,${totalTraffic},${totalSales},${totalConversion},${lastYearTotalTraffic},${totalTrafficYoY}`);
 
+            csvRows.push('');
+
+            // === Care 產品搭售率分析 ===
+            if (data.careData && data.careData.lastYear && data.careData.thisYear) {
+                csvRows.push('=== Care 產品搭售率分析 ===');
+                csvRows.push(`產品類別,去年ST,去年AC+套數,去年搭售率,今年ST,今年AC+套數,今年搭售率,YoY`);
+                
+                const careCategories = ['CPU', 'iPad', 'iPhone', 'Apple Watch', 'AirPods'];
+                const lastYearCare = data.careData.lastYear.data[storeId] || {};
+                const thisYearCare = data.careData.thisYear.data[storeId] || {};
+                
+                let totalLastST = 0, totalLastCare = 0, totalThisST = 0, totalThisCare = 0;
+                
+                careCategories.forEach(cat => {
+                    const lastYear = lastYearCare[cat] || { st: 0, care: 0 };
+                    const thisYear = thisYearCare[cat] || { st: 0, care: 0 };
+                    
+                    const lastYearRate = lastYear.st > 0 ? (lastYear.care / lastYear.st * 100).toFixed(2) + '%' : '0.00%';
+                    const thisYearRate = thisYear.st > 0 ? (thisYear.care / thisYear.st * 100).toFixed(2) + '%' : '0.00%';
+                    const yoy = lastYear.st > 0 ? ((thisYear.care / thisYear.st * 100) - (lastYear.care / lastYear.st * 100)).toFixed(2) + '%' : '0.00%';
+                    
+                    totalLastST += lastYear.st;
+                    totalLastCare += lastYear.care;
+                    totalThisST += thisYear.st;
+                    totalThisCare += thisYear.care;
+                    
+                    csvRows.push(`${cat},${lastYear.st},${lastYear.care},${lastYearRate},${thisYear.st},${thisYear.care},${thisYearRate},${yoy}`);
+                });
+                
+                const totalLastRate = totalLastST > 0 ? (totalLastCare / totalLastST * 100).toFixed(2) + '%' : '0.00%';
+                const totalThisRate = totalThisST > 0 ? (totalThisCare / totalThisST * 100).toFixed(2) + '%' : '0.00%';
+                const totalYoY = totalLastST > 0 ? ((totalThisCare / totalThisST * 100) - (totalLastCare / totalLastST * 100)).toFixed(2) + '%' : '0.00%';
+                
+                csvRows.push(`總計,${totalLastST},${totalLastCare},${totalLastRate},${totalThisST},${totalThisCare},${totalThisRate},${totalYoY}`);
+            }
+
             // 生成 CSV 內容
             const csvContent = csvRows.join('\n');
 
@@ -870,6 +1117,11 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="care-section">
+                        <div class="care-section-header">Care 產品搭售率分析</div>
+                        ${data.careData ? generateCareTable(storeId, data.careData) : '<div style="color: #9ca3af; padding: 20px; text-align: center;">Care 數據載入中...</div>'}
                     </div>
                 </div>
             `;
