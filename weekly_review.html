@@ -440,19 +440,35 @@
                 const refArrayBuffer = await refResponse.arrayBuffer();
                 const refWorkbook = XLSX.read(new Uint8Array(refArrayBuffer), { type: 'array' });
                 
-                // 解析 Care 工作表，建立 Care 產品代碼清單
-                const careSheet = refWorkbook.Sheets['Care'];
-                const careRows = XLSX.utils.sheet_to_json(careSheet, { header: 1 });
+                // 解析「立展」工作表 - 建立產品代碼 -> 大分類對照表
+                const lizanSheet = refWorkbook.Sheets['立展'];
+                const lizanRows = XLSX.utils.sheet_to_json(lizanSheet, { header: 1 });
                 
-                const careProductCodes = new Set();
-                for (let i = 1; i < careRows.length; i++) {
-                    const code = careRows[i][0];  // Code 欄位
-                    if (code) {
-                        careProductCodes.add(code.toString());
+                const productCategory = {};  // product_code -> 大分類
+                for (let i = 1; i < lizanRows.length; i++) {
+                    const code = lizanRows[i][0];  // Code
+                    const bigCategory = lizanRows[i][2];  // 大分類
+                    if (code && bigCategory) {
+                        productCategory[code.toString()] = bigCategory;
                     }
                 }
                 
-                console.log(`載入了 ${careProductCodes.size} 個 Care 產品代碼`);
+                console.log(`載入了 ${Object.keys(productCategory).length} 個產品分類`);
+                
+                // 解析「Care」工作表 - 建立 Care 產品代碼 -> class5 對照表
+                const careSheet = refWorkbook.Sheets['Care'];
+                const careRows = XLSX.utils.sheet_to_json(careSheet, { header: 1 });
+                
+                const careClass5 = {};  // product_code -> class5
+                for (let i = 1; i < careRows.length; i++) {
+                    const code = careRows[i][0];  // Code
+                    const class5 = careRows[i][10];  // class5 (第11欄，索引10)
+                    if (code && class5) {
+                        careClass5[code.toString()] = class5;
+                    }
+                }
+                
+                console.log(`載入了 ${Object.keys(careClass5).length} 個 Care 產品分類`);
                 
                 // 直接載入已知的兩個檔案
                 const files = ['20250301-20250308.xls', '20260301-20260308.xls'];
@@ -464,7 +480,7 @@
                     return {
                         filename: filename,
                         date: filename.replace('.xls', ''),
-                        data: parseCareData(workbook, careProductCodes)
+                        data: parseCareData(workbook, productCategory, careClass5)
                     };
                 });
                 
@@ -484,7 +500,7 @@
         }
 
         // 解析 Care 數據
-        function parseCareData(workbook, careProductCodes) {
+        function parseCareData(workbook, productCategory, careClass5) {
             const sheet = workbook.Sheets[workbook.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
             
@@ -494,12 +510,10 @@
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i];
                 const storeId = row[0]?.toString();
-                const subDepart = row[4];  // SUB_DEPART_DESCRIPTION
-                const classDesc = row[5];   // CLASS_DESCRIPTION
                 const productCode = row[7]?.toString();  // product_code
                 const qty = row[12] || 0;   // total_qty
                 
-                if (!storeId) continue;
+                if (!storeId || !productCode) continue;
                 
                 if (!storeData[storeId]) {
                     storeData[storeId] = {
@@ -511,21 +525,38 @@
                     };
                 }
                 
-                // 判斷產品類別
-                let category = null;
-                if (subDepart === '1010 PC NOTEBOOK') category = 'CPU';
-                else if (subDepart === '1011 平板電腦') category = 'iPad';
-                else if (subDepart === '1012 手機') category = 'iPhone';
-                else if (subDepart === '1013 穿戴裝置' || (classDesc && classDesc.includes('Watch'))) category = 'Apple Watch';
-                else if (classDesc && classDesc.includes('AirPods')) category = 'AirPods';
+                // 先檢查是否為 Care 產品
+                if (careClass5[productCode]) {
+                    const class5 = careClass5[productCode];
+                    let category = null;
+                    
+                    // 根據 class5 對應到主機類別
+                    if (class5 === 'CPU') category = 'CPU';
+                    else if (class5 === 'iPad') category = 'iPad';
+                    else if (class5 === 'iPhone') category = 'iPhone';
+                    else if (class5 === 'AW') category = 'Apple Watch';
+                    else if (class5 === 'Audio') category = 'AirPods';  // Audio 的 Care 歸到 AirPods
+                    
+                    if (category) {
+                        storeData[storeId][category].care += qty;
+                    }
+                    continue;
+                }
                 
-                if (!category) continue;
-                
-                // 判斷是否為 Care - 使用產品代碼查詢
-                if (productCode && careProductCodes.has(productCode)) {
-                    storeData[storeId][category].care += qty;
-                } else {
-                    storeData[storeId][category].st += qty;
+                // 不是 Care 產品，根據大分類判斷主機類別
+                const bigCategory = productCategory[productCode];
+                if (bigCategory) {
+                    let category = null;
+                    
+                    if (bigCategory === 'CPU') category = 'CPU';
+                    else if (bigCategory === 'iPad') category = 'iPad';
+                    else if (bigCategory === 'iPhone') category = 'iPhone';
+                    else if (bigCategory === 'Apple Watch') category = 'Apple Watch';
+                    else if (bigCategory === 'AirPods') category = 'AirPods';
+                    
+                    if (category) {
+                        storeData[storeId][category].st += qty;
+                    }
                 }
             }
             
