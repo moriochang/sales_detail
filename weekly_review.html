@@ -435,6 +435,25 @@
         // 載入 Care 檔案
         async function loadCareFiles() {
             try {
+                // 載入立展參考檔案
+                const refResponse = await fetch('data/lizan_reference.xlsx');
+                const refArrayBuffer = await refResponse.arrayBuffer();
+                const refWorkbook = XLSX.read(new Uint8Array(refArrayBuffer), { type: 'array' });
+                
+                // 解析 Care 工作表，建立 Care 產品代碼清單
+                const careSheet = refWorkbook.Sheets['Care'];
+                const careRows = XLSX.utils.sheet_to_json(careSheet, { header: 1 });
+                
+                const careProductCodes = new Set();
+                for (let i = 1; i < careRows.length; i++) {
+                    const code = careRows[i][0];  // Code 欄位
+                    if (code) {
+                        careProductCodes.add(code.toString());
+                    }
+                }
+                
+                console.log(`載入了 ${careProductCodes.size} 個 Care 產品代碼`);
+                
                 // 直接載入已知的兩個檔案
                 const files = ['20250301-20250308.xls', '20260301-20260308.xls'];
                 
@@ -445,7 +464,7 @@
                     return {
                         filename: filename,
                         date: filename.replace('.xls', ''),
-                        data: parseCareData(workbook)
+                        data: parseCareData(workbook, careProductCodes)
                     };
                 });
                 
@@ -465,7 +484,7 @@
         }
 
         // 解析 Care 數據
-        function parseCareData(workbook) {
+        function parseCareData(workbook, careProductCodes) {
             const sheet = workbook.Sheets[workbook.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
             
@@ -477,6 +496,7 @@
                 const storeId = row[0]?.toString();
                 const subDepart = row[4];  // SUB_DEPART_DESCRIPTION
                 const classDesc = row[5];   // CLASS_DESCRIPTION
+                const productCode = row[7]?.toString();  // product_code
                 const qty = row[12] || 0;   // total_qty
                 
                 if (!storeId) continue;
@@ -501,8 +521,8 @@
                 
                 if (!category) continue;
                 
-                // 判斷是否為 Care
-                if (classDesc && (classDesc.includes('Care') || classDesc.includes('ACPP') || classDesc.includes('iCPP'))) {
+                // 判斷是否為 Care - 使用產品代碼查詢
+                if (productCode && careProductCodes.has(productCode)) {
                     storeData[storeId][category].care += qty;
                 } else {
                     storeData[storeId][category].st += qty;
