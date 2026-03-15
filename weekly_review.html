@@ -433,7 +433,7 @@
         // ========== Care 產品搭售率分析函數 ==========
 
         // 載入 Care 檔案
-        async function loadCareFiles() {
+        async function loadCareFiles(reviewWeekInfo) {
             try {
                 // 載入立展參考檔案
                 const refResponse = await fetch('data/lizan_reference.xlsx');
@@ -470,21 +470,46 @@
                 
                 console.log(`載入了 ${Object.keys(careClass5).length} 個 Care 產品分類`);
                 
-                // 直接載入已知的兩個檔案
-                const files = ['20250301-20250308.xls', '20260301-20260308.xls'];
+                // 根據回顧週次計算檔名
+                // reviewWeekInfo 包含 start 和 end 日期，格式如 '2026-03-08' 和 '2026-03-14'
+                const thisYearStart = reviewWeekInfo.start.replace(/-/g, '');  // '20260308'
+                const thisYearEnd = reviewWeekInfo.end.replace(/-/g, '');      // '20260314'
+                const thisYearFilename = `${thisYearStart}-${thisYearEnd}.xls`;
                 
-                const careDataPromises = files.map(async filename => {
-                    const response = await fetch(`data/care/${filename}`);
-                    const arrayBuffer = await response.arrayBuffer();
-                    const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
-                    return {
-                        filename: filename,
-                        date: filename.replace('.xls', ''),
-                        data: parseCareData(workbook, productCategory, careClass5)
-                    };
+                // 計算去年同期的檔名（年份 -1）
+                const lastYearStart = reviewWeekInfo.start.replace('2026', '2025').replace(/-/g, '');
+                const lastYearEnd = reviewWeekInfo.end.replace('2026', '2025').replace(/-/g, '');
+                const lastYearFilename = `${lastYearStart}-${lastYearEnd}.xls`;
+                
+                console.log(`載入 Care 檔案: ${lastYearFilename}, ${thisYearFilename}`);
+                
+                // 載入今年和去年的 Care 檔案
+                const careDataPromises = [lastYearFilename, thisYearFilename].map(async filename => {
+                    try {
+                        const response = await fetch(`data/care/${filename}`);
+                        if (!response.ok) {
+                            console.warn(`Care 檔案不存在: ${filename}`);
+                            return null;
+                        }
+                        const arrayBuffer = await response.arrayBuffer();
+                        const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+                        return {
+                            filename: filename,
+                            date: filename.replace('.xls', ''),
+                            data: parseCareData(workbook, productCategory, careClass5)
+                        };
+                    } catch (error) {
+                        console.error(`載入 Care 檔案失敗: ${filename}`, error);
+                        return null;
+                    }
                 });
                 
-                const careFiles = await Promise.all(careDataPromises);
+                const careFiles = (await Promise.all(careDataPromises)).filter(f => f !== null);
+                
+                if (careFiles.length < 2) {
+                    console.warn('Care 檔案載入不完整，可能缺少去年或今年的檔案');
+                    return null;
+                }
                 
                 // 根據日期排序（舊的在前）
                 careFiles.sort((a, b) => a.date.localeCompare(b.date));
@@ -759,6 +784,8 @@
                 currentWeek: currentWeek.week,
                 reviewWeek: reviewWeek ? reviewWeek.week : 'W1',
                 reviewDateRange: reviewWeek ? `${reviewWeek.start.substring(5)} ~ ${reviewWeek.end.substring(5)}` : '',
+                start: reviewWeek ? reviewWeek.start : '',
+                end: reviewWeek ? reviewWeek.end : '',
                 quarter: 'FY26Q2'
             };
         }
@@ -779,7 +806,7 @@
                     fetch(`data/quarterly/${weekInfo.quarter}.xlsx`),
                     fetch(`data/quarterly/FY25Q2.xlsx`),
                     fetch(`data/quarterly/${weekInfo.quarter}_targets.xlsx`),
-                    loadCareFiles()
+                    loadCareFiles(weekInfo)
                 ]);
                 
                 const [dataThisYear, dataLastYear, dataTargets] = await Promise.all([
