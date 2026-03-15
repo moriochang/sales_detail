@@ -471,14 +471,24 @@
                 console.log(`載入了 ${Object.keys(careClass5).length} 個 Care 產品分類`);
                 
                 // 根據回顧週次計算檔名
-                // reviewWeekInfo 包含 start 和 end 日期，格式如 '2026-03-08' 和 '2026-03-14'
-                const thisYearStart = reviewWeekInfo.start.replace(/-/g, '');  // '20260308'
-                const thisYearEnd = reviewWeekInfo.end.replace(/-/g, '');      // '20260314'
+                // Care 檔案格式：從月初（01日）到回顧週結束日期
+                // 例如：W12 (03-15 ~ 03-21) → 20260301-20260321.xls
+                
+                // 提取回顧週的年月
+                const endDate = reviewWeekInfo.end;  // '2026-03-21'
+                const [year, month, day] = endDate.split('-');
+                
+                // 構建月初日期（01日）
+                const monthStart = `${year}-${month}-01`;
+                
+                // 今年檔名：月初到回顧週結束
+                const thisYearStart = monthStart.replace(/-/g, '');  // '20260301'
+                const thisYearEnd = endDate.replace(/-/g, '');       // '20260321'
                 const thisYearFilename = `${thisYearStart}-${thisYearEnd}.xls`;
                 
-                // 計算去年同期的檔名（年份 -1）
-                const lastYearStart = reviewWeekInfo.start.replace('2026', '2025').replace(/-/g, '');
-                const lastYearEnd = reviewWeekInfo.end.replace('2026', '2025').replace(/-/g, '');
+                // 去年同期檔名（年份 -1）
+                const lastYearStart = monthStart.replace(year, String(parseInt(year) - 1)).replace(/-/g, '');
+                const lastYearEnd = endDate.replace(year, String(parseInt(year) - 1)).replace(/-/g, '');
                 const lastYearFilename = `${lastYearStart}-${lastYearEnd}.xls`;
                 
                 console.log(`載入 Care 檔案: ${lastYearFilename}, ${thisYearFilename}`);
@@ -493,9 +503,20 @@
                         }
                         const arrayBuffer = await response.arrayBuffer();
                         const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+                        
+                        // 從檔名提取日期範圍並格式化
+                        // 檔名格式: 20260301-20260314.xls
+                        const dateRange = filename.replace('.xls', '');
+                        const [startStr, endStr] = dateRange.split('-');
+                        
+                        // 格式化為 2026/03/01~03/14
+                        const startFormatted = `${startStr.substring(0, 4)}/${startStr.substring(4, 6)}/${startStr.substring(6, 8)}`;
+                        const endFormatted = `${endStr.substring(4, 6)}/${endStr.substring(6, 8)}`;
+                        const displayDate = `${startFormatted}~${endFormatted}`;
+                        
                         return {
                             filename: filename,
-                            date: filename.replace('.xls', ''),
+                            date: displayDate,
                             data: parseCareData(workbook, productCategory, careClass5)
                         };
                     } catch (error) {
