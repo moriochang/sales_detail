@@ -511,35 +511,56 @@
                 const row = rows[i];
                 const storeId = row[0]?.toString();
                 const productCode = row[7]?.toString();  // product_code
+                const productName = row[6];  // product_name
+                const classDesc = row[5];  // CLASS_DESCRIPTION
                 const qty = row[12] || 0;   // total_qty
+                const amt = row[13] || 0;   // total_amt
                 
                 if (!storeId || !productCode) continue;
                 
                 if (!storeData[storeId]) {
                     storeData[storeId] = {
-                        CPU: { st: 0, care: 0 },
-                        iPad: { st: 0, care: 0 },
-                        iPhone: { st: 0, care: 0 },
-                        'Apple Watch': { st: 0, care: 0 },
-                        AirPods: { st: 0, care: 0 }
+                        CPU: { st: 0, care: 0, careAmt: 0 },
+                        iPad: { st: 0, care: 0, careAmt: 0 },
+                        iPhone: { st: 0, care: 0, careAmt: 0 },
+                        'Apple Watch': { st: 0, care: 0, careAmt: 0 },
+                        AirPods: { st: 0, care: 0, careAmt: 0 }
                     };
                 }
                 
-                // 先檢查是否為 Care 產品
+                // 先檢查是否為 Care 產品（使用 class5 或產品名稱判斷）
+                let careCategory = null;
+                
                 if (careClass5[productCode]) {
+                    // 方法 1: 從 Care 工作表的 class5 判斷
                     const class5 = careClass5[productCode];
-                    let category = null;
+                    if (class5 === 'CPU') careCategory = 'CPU';
+                    else if (class5 === 'iPad') careCategory = 'iPad';
+                    else if (class5 === 'iPhone') careCategory = 'iPhone';
+                    else if (class5 === 'AW') careCategory = 'Apple Watch';
+                    else if (class5 === 'Audio') careCategory = 'AirPods';
+                } 
+                else if (classDesc && (classDesc.includes('7063 Apple AC+ system') || 
+                                       (productName && (productName.includes('AC+') || productName.includes('ACPP') || productName.includes('iCPP'))))) {
+                    // 方法 2: 如果產品代碼不在 Care 工作表，使用產品名稱判斷
+                    const nameUpper = productName ? productName.toUpperCase() : '';
                     
-                    // 根據 class5 對應到主機類別
-                    if (class5 === 'CPU') category = 'CPU';
-                    else if (class5 === 'iPad') category = 'iPad';
-                    else if (class5 === 'iPhone') category = 'iPhone';
-                    else if (class5 === 'AW') category = 'Apple Watch';
-                    else if (class5 === 'Audio') category = 'AirPods';  // Audio 的 Care 歸到 AirPods
-                    
-                    if (category) {
-                        storeData[storeId][category].care += qty;
+                    if (nameUpper.includes('MACBOOK') || nameUpper.includes('MBP') || nameUpper.includes('MBA') || nameUpper.includes('MAC')) {
+                        careCategory = 'CPU';
+                    } else if (nameUpper.includes('IPAD')) {
+                        careCategory = 'iPad';
+                    } else if (nameUpper.includes('IPHONE')) {
+                        careCategory = 'iPhone';
+                    } else if (nameUpper.includes('WATCH') || nameUpper.includes(' AW ')) {
+                        careCategory = 'Apple Watch';
+                    } else if (nameUpper.includes('AIRPODS')) {
+                        careCategory = 'AirPods';
                     }
+                }
+                
+                if (careCategory) {
+                    storeData[storeId][careCategory].care += qty;
+                    storeData[storeId][careCategory].careAmt += amt;
                     continue;
                 }
                 
@@ -574,44 +595,75 @@
             const lastYearData = careData.lastYear.data[storeId] || {};
             const thisYearData = careData.thisYear.data[storeId] || {};
             
-            let totalLastYearST = 0, totalLastYearCare = 0;
-            let totalThisYearST = 0, totalThisYearCare = 0;
+            let totalLastYearST = 0, totalLastYearCare = 0, totalLastYearCareAmt = 0;
+            let totalThisYearST = 0, totalThisYearCare = 0, totalThisYearCareAmt = 0;
             
             const rows = categories.map(cat => {
-                const lastYear = lastYearData[cat] || { st: 0, care: 0 };
-                const thisYear = thisYearData[cat] || { st: 0, care: 0 };
+                const lastYear = lastYearData[cat] || { st: 0, care: 0, careAmt: 0 };
+                const thisYear = thisYearData[cat] || { st: 0, care: 0, careAmt: 0 };
                 
                 const lastYearRate = lastYear.st > 0 ? (lastYear.care / lastYear.st * 100) : 0;
                 const thisYearRate = thisYear.st > 0 ? (thisYear.care / thisYear.st * 100) : 0;
-                const yoyRate = thisYearRate - lastYearRate;
                 
                 totalLastYearST += lastYear.st;
                 totalLastYearCare += lastYear.care;
+                totalLastYearCareAmt += lastYear.careAmt;
                 totalThisYearST += thisYear.st;
                 totalThisYearCare += thisYear.care;
+                totalThisYearCareAmt += thisYear.careAmt;
                 
-                const yoyClass = yoyRate > 0 ? 'positive' : yoyRate < 0 ? 'negative' : 'neutral';
-                const yoySign = yoyRate > 0 ? '+' : '';
+                // 計算 YoY
+                const stYoY = lastYear.st > 0 ? ((thisYear.st - lastYear.st) / lastYear.st * 100) : 0;
+                const careYoY = lastYear.care > 0 ? ((thisYear.care - lastYear.care) / lastYear.care * 100) : (thisYear.care > 0 ? 0 : 0);
+                const careAmtYoY = lastYear.careAmt > 0 ? ((thisYear.careAmt - lastYear.careAmt) / lastYear.careAmt * 100) : (thisYear.careAmt > 0 ? 0 : 0);
+                const rateYoY = thisYearRate - lastYearRate;
+                
+                const stYoYClass = stYoY > 0 ? 'positive' : stYoY < 0 ? 'negative' : 'neutral';
+                const careYoYClass = careYoY > 0 ? 'positive' : careYoY < 0 ? 'negative' : 'neutral';
+                const careAmtYoYClass = careAmtYoY > 0 ? 'positive' : careAmtYoY < 0 ? 'negative' : 'neutral';
+                const rateYoYClass = rateYoY > 0 ? 'positive' : rateYoY < 0 ? 'negative' : 'neutral';
+                
+                const stYoYSign = stYoY > 0 ? '+' : '';
+                const careYoYSign = careYoY > 0 ? '+' : '';
+                const careAmtYoYSign = careAmtYoY > 0 ? '+' : '';
+                const rateYoYSign = rateYoY > 0 ? '+' : '';
                 
                 return `
                     <tr>
                         <td>${cat === 'Apple Watch' ? 'AW' : cat}</td>
                         <td>${lastYear.st}</td>
                         <td>${lastYear.care}</td>
+                        <td>${Math.round(lastYear.careAmt).toLocaleString()}</td>
                         <td><span style="color: #fb923c;">${lastYearRate.toFixed(2)}%</span></td>
                         <td>${thisYear.st}</td>
                         <td>${thisYear.care}</td>
+                        <td>${Math.round(thisYear.careAmt).toLocaleString()}</td>
                         <td><span style="color: #4ade80;">${thisYearRate.toFixed(2)}%</span></td>
-                        <td><span class="${yoyClass}">${yoySign}${yoyRate.toFixed(2)}%</span></td>
+                        <td><span class="${stYoYClass}">${stYoYSign}${stYoY.toFixed(1)}%</span></td>
+                        <td><span class="${careYoYClass}">${careYoYSign}${careYoY.toFixed(1)}%</span></td>
+                        <td><span class="${careAmtYoYClass}">${careAmtYoYSign}${careAmtYoY.toFixed(1)}%</span></td>
+                        <td><span class="${rateYoYClass}">${rateYoYSign}${rateYoY.toFixed(2)}%</span></td>
                     </tr>
                 `;
             }).join('');
             
             const totalLastYearRate = totalLastYearST > 0 ? (totalLastYearCare / totalLastYearST * 100) : 0;
             const totalThisYearRate = totalThisYearST > 0 ? (totalThisYearCare / totalThisYearST * 100) : 0;
-            const totalYoY = totalThisYearRate - totalLastYearRate;
-            const totalYoYClass = totalYoY > 0 ? 'positive' : totalYoY < 0 ? 'negative' : 'neutral';
-            const totalYoYSign = totalYoY > 0 ? '+' : '';
+            
+            const totalSTYoY = totalLastYearST > 0 ? ((totalThisYearST - totalLastYearST) / totalLastYearST * 100) : 0;
+            const totalCareYoY = totalLastYearCare > 0 ? ((totalThisYearCare - totalLastYearCare) / totalLastYearCare * 100) : 0;
+            const totalCareAmtYoY = totalLastYearCareAmt > 0 ? ((totalThisYearCareAmt - totalLastYearCareAmt) / totalLastYearCareAmt * 100) : 0;
+            const totalRateYoY = totalThisYearRate - totalLastYearRate;
+            
+            const totalSTYoYClass = totalSTYoY > 0 ? 'positive' : totalSTYoY < 0 ? 'negative' : 'neutral';
+            const totalCareYoYClass = totalCareYoY > 0 ? 'positive' : totalCareYoY < 0 ? 'negative' : 'neutral';
+            const totalCareAmtYoYClass = totalCareAmtYoY > 0 ? 'positive' : totalCareAmtYoY < 0 ? 'negative' : 'neutral';
+            const totalRateYoYClass = totalRateYoY > 0 ? 'positive' : totalRateYoY < 0 ? 'negative' : 'neutral';
+            
+            const totalSTYoYSign = totalSTYoY > 0 ? '+' : '';
+            const totalCareYoYSign = totalCareYoY > 0 ? '+' : '';
+            const totalCareAmtYoYSign = totalCareAmtYoY > 0 ? '+' : '';
+            const totalRateYoYSign = totalRateYoY > 0 ? '+' : '';
             
             return `
                 <div style="margin-bottom: 10px; color: #9ca3af; font-size: 14px;">
@@ -621,16 +673,22 @@
                     <thead>
                         <tr>
                             <th rowspan="2">產品類別</th>
-                            <th colspan="3">去年 (${careData.lastYear.date})</th>
-                            <th colspan="3">今年 (${careData.thisYear.date})</th>
-                            <th rowspan="2">YoY</th>
+                            <th colspan="4">去年 (${careData.lastYear.date})</th>
+                            <th colspan="4">今年 (${careData.thisYear.date})</th>
+                            <th colspan="4">YoY</th>
                         </tr>
                         <tr>
                             <th>ST</th>
                             <th>AC+ 套數</th>
+                            <th>AC+ 金額</th>
                             <th>搭售率</th>
                             <th>ST</th>
                             <th>AC+ 套數</th>
+                            <th>AC+ 金額</th>
+                            <th>搭售率</th>
+                            <th>ST</th>
+                            <th>AC+ 套數</th>
+                            <th>AC+ 金額</th>
                             <th>搭售率</th>
                         </tr>
                     </thead>
@@ -640,11 +698,16 @@
                             <td>總計</td>
                             <td>${totalLastYearST}</td>
                             <td>${totalLastYearCare}</td>
+                            <td>${Math.round(totalLastYearCareAmt).toLocaleString()}</td>
                             <td><span style="color: #fb923c;">${totalLastYearRate.toFixed(2)}%</span></td>
                             <td>${totalThisYearST}</td>
                             <td>${totalThisYearCare}</td>
+                            <td>${Math.round(totalThisYearCareAmt).toLocaleString()}</td>
                             <td><span style="color: #4ade80;">${totalThisYearRate.toFixed(2)}%</span></td>
-                            <td><span class="${totalYoYClass}">${totalYoYSign}${totalYoY.toFixed(2)}%</span></td>
+                            <td><span class="${totalSTYoYClass}">${totalSTYoYSign}${totalSTYoY.toFixed(1)}%</span></td>
+                            <td><span class="${totalCareYoYClass}">${totalCareYoYSign}${totalCareYoY.toFixed(1)}%</span></td>
+                            <td><span class="${totalCareAmtYoYClass}">${totalCareAmtYoYSign}${totalCareAmtYoY.toFixed(1)}%</span></td>
+                            <td><span class="${totalRateYoYClass}">${totalRateYoYSign}${totalRateYoY.toFixed(2)}%</span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -1058,35 +1121,46 @@
             // === Care 產品搭售率分析 ===
             if (data.careData && data.careData.lastYear && data.careData.thisYear) {
                 csvRows.push('=== Care 產品搭售率分析 ===');
-                csvRows.push(`產品類別,去年ST,去年AC+套數,去年搭售率,今年ST,今年AC+套數,今年搭售率,YoY`);
+                csvRows.push(`產品類別,去年ST,去年AC+套數,去年AC+金額,去年搭售率,今年ST,今年AC+套數,今年AC+金額,今年搭售率,ST YoY,AC+套數 YoY,AC+金額 YoY,搭售率 YoY`);
                 
                 const careCategories = ['CPU', 'iPad', 'iPhone', 'Apple Watch', 'AirPods'];
                 const lastYearCare = data.careData.lastYear.data[storeId] || {};
                 const thisYearCare = data.careData.thisYear.data[storeId] || {};
                 
-                let totalLastST = 0, totalLastCare = 0, totalThisST = 0, totalThisCare = 0;
+                let totalLastST = 0, totalLastCare = 0, totalLastCareAmt = 0;
+                let totalThisST = 0, totalThisCare = 0, totalThisCareAmt = 0;
                 
                 careCategories.forEach(cat => {
-                    const lastYear = lastYearCare[cat] || { st: 0, care: 0 };
-                    const thisYear = thisYearCare[cat] || { st: 0, care: 0 };
+                    const lastYear = lastYearCare[cat] || { st: 0, care: 0, careAmt: 0 };
+                    const thisYear = thisYearCare[cat] || { st: 0, care: 0, careAmt: 0 };
                     
                     const lastYearRate = lastYear.st > 0 ? (lastYear.care / lastYear.st * 100).toFixed(2) + '%' : '0.00%';
                     const thisYearRate = thisYear.st > 0 ? (thisYear.care / thisYear.st * 100).toFixed(2) + '%' : '0.00%';
-                    const yoy = lastYear.st > 0 ? ((thisYear.care / thisYear.st * 100) - (lastYear.care / lastYear.st * 100)).toFixed(2) + '%' : '0.00%';
+                    
+                    const stYoY = lastYear.st > 0 ? ((thisYear.st - lastYear.st) / lastYear.st * 100).toFixed(1) + '%' : '0.0%';
+                    const careYoY = lastYear.care > 0 ? ((thisYear.care - lastYear.care) / lastYear.care * 100).toFixed(1) + '%' : '0.0%';
+                    const careAmtYoY = lastYear.careAmt > 0 ? ((thisYear.careAmt - lastYear.careAmt) / lastYear.careAmt * 100).toFixed(1) + '%' : '0.0%';
+                    const rateYoY = ((thisYear.st > 0 ? thisYear.care / thisYear.st * 100 : 0) - (lastYear.st > 0 ? lastYear.care / lastYear.st * 100 : 0)).toFixed(2) + '%';
                     
                     totalLastST += lastYear.st;
                     totalLastCare += lastYear.care;
+                    totalLastCareAmt += lastYear.careAmt;
                     totalThisST += thisYear.st;
                     totalThisCare += thisYear.care;
+                    totalThisCareAmt += thisYear.careAmt;
                     
-                    csvRows.push(`${cat},${lastYear.st},${lastYear.care},${lastYearRate},${thisYear.st},${thisYear.care},${thisYearRate},${yoy}`);
+                    csvRows.push(`${cat},${lastYear.st},${lastYear.care},${Math.round(lastYear.careAmt)},${lastYearRate},${thisYear.st},${thisYear.care},${Math.round(thisYear.careAmt)},${thisYearRate},${stYoY},${careYoY},${careAmtYoY},${rateYoY}`);
                 });
                 
                 const totalLastRate = totalLastST > 0 ? (totalLastCare / totalLastST * 100).toFixed(2) + '%' : '0.00%';
                 const totalThisRate = totalThisST > 0 ? (totalThisCare / totalThisST * 100).toFixed(2) + '%' : '0.00%';
-                const totalYoY = totalLastST > 0 ? ((totalThisCare / totalThisST * 100) - (totalLastCare / totalLastST * 100)).toFixed(2) + '%' : '0.00%';
                 
-                csvRows.push(`總計,${totalLastST},${totalLastCare},${totalLastRate},${totalThisST},${totalThisCare},${totalThisRate},${totalYoY}`);
+                const totalSTYoY = totalLastST > 0 ? ((totalThisST - totalLastST) / totalLastST * 100).toFixed(1) + '%' : '0.0%';
+                const totalCareYoY = totalLastCare > 0 ? ((totalThisCare - totalLastCare) / totalLastCare * 100).toFixed(1) + '%' : '0.0%';
+                const totalCareAmtYoY = totalLastCareAmt > 0 ? ((totalThisCareAmt - totalLastCareAmt) / totalLastCareAmt * 100).toFixed(1) + '%' : '0.0%';
+                const totalRateYoY = ((totalThisST > 0 ? totalThisCare / totalThisST * 100 : 0) - (totalLastST > 0 ? totalLastCare / totalLastST * 100 : 0)).toFixed(2) + '%';
+                
+                csvRows.push(`總計,${totalLastST},${totalLastCare},${Math.round(totalLastCareAmt)},${totalLastRate},${totalThisST},${totalThisCare},${Math.round(totalThisCareAmt)},${totalThisRate},${totalSTYoY},${totalCareYoY},${totalCareAmtYoY},${totalRateYoY}`);
             }
 
             // 生成 CSV 內容
