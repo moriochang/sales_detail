@@ -835,12 +835,18 @@
                 throw new Error(`找不到週次 ${reviewWeek} (完整名稱: ${fullWeekName})`);
             }
 
+            // 動態計算總週數：計算有多少個週次欄位（格式如 26Q2W1, 26Q2W2, ...）
+            const weekPattern = new RegExp(`^${fiscalYear}Q2W\\d+$`);
+            const totalWeeks = weekHeaders.filter(h => h && weekPattern.test(h)).length;
+            
+            console.log(`偵測到 ${totalWeeks} 週的數據`);
+
             const result = {};
 
             // 解析每個門市的數據
             Object.keys(CENTRAL_STORES).forEach(storeId => {
                 const storeNum = parseInt(storeId);
-                result[storeId] = parseStoreData(rows, storeNum, weekIndex);
+                result[storeId] = parseStoreData(rows, storeNum, weekIndex, totalWeeks);
             });
 
             return result;
@@ -897,7 +903,7 @@
         }
 
         // 解析單一門市數據
-        function parseStoreData(rows, storeNum, weekColIndex) {
+        function parseStoreData(rows, storeNum, weekColIndex, totalWeeks) {
             const storeData = {
                 products: {},
                 traffic: null,
@@ -918,9 +924,9 @@
                     
                     // 檢查是否為 Traffic 行
                     if (row[1] === 'Traffic') {
-                        // 收集 W1~W10 的 Traffic 數據
+                        // 收集所有週的 Traffic 數據
                         const weeklyTraffic = [];
-                        for (let week = 0; week < 10; week++) {
+                        for (let week = 0; week < totalWeeks; week++) {
                             const weekStartCol = week * 8;
                             const trafficCol = weekStartCol + 2;
                             const traffic = row[trafficCol] || 0;
@@ -944,19 +950,19 @@
                 if (isInStoreBlock && !row[0] && row[1]) {
                     const productClass = row[1];
                     
-                    // W10 的數量在 weekColIndex + 2
+                    // 當前回顧週的數量
                     const weekQty = row[weekColIndex + 2] || 0;
                     const weekAmount = row[weekColIndex + 3] || 0;
                     
                     // 五大主機 + AirPods（用於計算轉換率）
                     const allProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch', 'AirPods'];
                     
-                    // 計算 W1~W10 的累積（每週間隔 8 欄）
+                    // 計算所有週的累積（每週間隔 8 欄）
                     let totalQty = 0;
                     let totalAmount = 0;
                     const weeklyQty = [];
                     
-                    for (let week = 0; week < 10; week++) {
+                    for (let week = 0; week < totalWeeks; week++) {
                         const weekStartCol = week * 8;
                         const qtyCol = weekStartCol + 2;
                         const amtCol = weekStartCol + 3;
@@ -1083,7 +1089,9 @@
             csvRows.push('=== 成交轉換率 ===');
             csvRows.push('週次,進店人流,成交台數,成交轉換率,去年同週人流,YoY');
 
-            for (let week = 0; week < 10; week++) {
+            const totalWeeks = data.weeklyTraffic ? data.weeklyTraffic.length : 0;
+            
+            for (let week = 0; week < totalWeeks; week++) {
                 let salesCount = 0;
                 fiveProducts.forEach(p => {
                     const key = p === 'AW' ? 'Apple Watch' : p;
@@ -1103,7 +1111,7 @@
             // 總計
             const totalTraffic = data.weeklyTraffic.reduce((sum, val) => sum + val, 0);
             let totalSales = 0;
-            for (let week = 0; week < 10; week++) {
+            for (let week = 0; week < totalWeeks; week++) {
                 fiveProducts.forEach(p => {
                     const key = p === 'AW' ? 'Apple Watch' : p;
                     if (data.products[key] && data.products[key].weeklyQty) {
@@ -1257,9 +1265,12 @@
         function generateTrafficTable(data, lastYearData) {
             const fiveProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch', 'AirPods'];
             
+            // 動態獲取週數（從 weeklyTraffic 的長度）
+            const totalWeeks = data.weeklyTraffic ? data.weeklyTraffic.length : 0;
+            
             // 計算每週的成交台數和轉換率
             const weeklyData = [];
-            for (let week = 0; week < 10; week++) {
+            for (let week = 0; week < totalWeeks; week++) {
                 let salesCount = 0;
                 fiveProducts.forEach(product => {
                     if (data.products[product] && data.products[product].weeklyQty) {
@@ -1523,12 +1534,15 @@
 
             const fiveProducts = ['CPU', 'iPad', 'iPhone', 'Apple Watch', 'AirPods'];
             
+            // 動態獲取週數
+            const totalWeeks = data.weeklyTraffic ? data.weeklyTraffic.length : 0;
+            
             // 計算每週數據
             const weekLabels = [];
             const trafficData = [];
             const conversionData = [];
             
-            for (let week = 0; week < 10; week++) {
+            for (let week = 0; week < totalWeeks; week++) {
                 weekLabels.push(`W${week + 1}`);
                 
                 // 計算成交台數
